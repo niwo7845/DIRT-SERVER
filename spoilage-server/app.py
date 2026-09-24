@@ -7,12 +7,16 @@ Listens on every network interface, port 8000, so ESPs on the same
 network can reach it at http://<this-computer's-IP>:8000
 """
 
+import os
 import time
 from contextlib import closing
 
 from flask import Flask, jsonify, request
 
 from db import get_connection, init_db, insert_readings, register_device
+
+HOST = os.environ.get("DIRT_HOST", "0.0.0.0")   # 0.0.0.0 = accept from any device on the LAN
+PORT = int(os.environ.get("DIRT_PORT", "8000"))  # must match SERVER_PORT in the ESP sketch
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = 256 * 1024  # reject bodies over 256 kB
@@ -40,7 +44,7 @@ def post_readings():
         with closing(get_connection()) as conn:
             with conn:  # one transaction: commits on success, rolls back on any error
                 device_id = register_device(conn, payload.get("device_id"),
-                                            payload.get("firmware"), now=server_ts)
+                                            now=server_ts)
                 result = insert_readings(conn, device_id, payload.get("samples"),
                                          server_ts=server_ts)
     except ValueError as err:
@@ -51,4 +55,10 @@ def post_readings():
 
 if __name__ == "__main__":
     init_db()
-    app.run(host="0.0.0.0", port=8000)
+    print(f"DIRT server listening on {HOST}:{PORT}")
+    try:
+        from waitress import serve  # production server; survives long unattended runs
+        serve(app, host=HOST, port=PORT, threads=8)
+    except ImportError:
+        print("waitress not installed, falling back to the Flask dev server")
+        app.run(host=HOST, port=PORT)

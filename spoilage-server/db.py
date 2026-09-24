@@ -16,7 +16,7 @@ from pathlib import Path
 
 DB_PATH = "spoilage.db"
 BUSY_TIMEOUT_S = 10  # seconds to wait if another connection is mid-write
-MAC_PATTERN = re.compile(r"^([0-9A-F]{2}:){5}[0-9A-F]{2}$")  # A0:B7:65:12:34:56
+DEVICE_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9 ._-]{0,63}$")  # "board in use", "box_01"
 MAX_SAMPLES_PER_POST = 100
 MIN_VALID_TS = 1735689600   # 2025-01-01 00:00:00 UTC; anything earlier means NTP never synced
 MAX_FUTURE_SKEW_S = 300     # allow device clock to run up to 5 min ahead of the server
@@ -57,8 +57,7 @@ CREATE TABLE IF NOT EXISTS experiments (
 -- One row per ESP32, keyed by WiFi MAC. Auto-registered on first POST.
 CREATE TABLE IF NOT EXISTS devices (
     id               TEXT PRIMARY KEY,
-    nickname         TEXT UNIQUE,
-    firmware_version TEXT,
+    display_name     TEXT,
     first_seen_utc   INTEGER NOT NULL DEFAULT {NOW},
     last_seen_utc    INTEGER,
     notes            TEXT
@@ -181,45 +180,50 @@ def get_connection(db_path: str = DB_PATH) -> sqlite3.Connection:
 
 
 def register_device(conn: sqlite3.Connection, device_id: str,
-                    firmware: str | None = None, now: int | None = None) -> str:
+                    now: int | None = None) -> str:
     """
     Record that a device has checked in.
 
-    - First time a MAC is seen: insert it with first_seen_utc = last_seen_utc = now.
-    - Every time after: update last_seen_utc, and firmware_version if one was sent.
-    - The nickname (box01) is never touched here; a person sets it once.
+    device_id is a free-form name chosen by the team, e.g. "board in use"
+    or "box_01". It is normalized to a lookup key: outer whitespace removed,
+    runs of spaces collapsed to one, lowercased. So "Board In Use" and
+    "board  in use" are the same device. The first spelling seen is kept in
+    display_name for the website.
+
+    - First time a name is seen: insert it with first_seen_utc = last_seen_utc = now.
+    - Every time after: update last_seen_utc.
 
     Does NOT commit. The caller commits, so registering the device and saving
     its readings succeed or fail together as one transaction.
 
-    Returns the normalized MAC address, which callers should use from then on.
-    Raises ValueError if device_id is not a valid MAC address.
+    Returns the normalized key, which callers should use from then on.
+    Raises ValueError if the name is empty, too long, or has odd characters.
     """
     if not isinstance(device_id, str):
         raise ValueError(f"device_id must be a string, got {type(device_id).__name__}")
 
-    mac = device_id.strip().upper().replace("-", ":")
-    if not MAC_PATTERN.match(mac):
-        raise ValueError(f"device_id must look like A0:B7:65:12:34:56, got {device_id!r}")
-
-    if firmware is not None:
-        firmware = str(firmware).strip() or None
+    display_name = " ".join(device_id.split())  # trim ends, collapse inner spaces
+    key = display_name.lower()
+    if not DEVICE_NAME_PATTERN.match(key):
+        raise ValueError(
+            "device_id must be 1 to 64 characters, start with a letter or digit, "
+            "and use only letters, digits, spaces, '.', '_' or '-'; "
+            f"got {device_id!r}"
+        )
 
     if now is None:
         now = int(time.time())
 
     conn.execute(
         """
-        INSERT INTO devices (id, firmware_version, first_seen_utc, last_seen_utc)
+        INSERT INTO devices (id, display_name, first_seen_utc, last_seen_utc)
         VALUES (?, ?, ?, ?)
         ON CONFLICT(id) DO UPDATE SET
-            firmware_version = COALESCE(excluded.firmware_version,
-                                        devices.firmware_version),
-            last_seen_utc    = excluded.last_seen_utc
+            last_seen_utc = excluded.last_seen_utc
         """,
-        (mac, firmware, now, now),
+        (key, display_name, now, now),
     )
-    return mac
+    return key
 
 
 def insert_readings(conn: sqlite3.Connection, device_id: str,

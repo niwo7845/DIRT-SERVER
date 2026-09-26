@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -10,15 +9,12 @@ import {
   Tooltip,
 } from "recharts";
 
-const data = [
-  { time: "08:00", value: 50 },
-  { time: "08:15", value: 51 },
-  { time: "08:30", value: 53 },
-  { time: "08:45", value: 54 },
-  { time: "09:00", value: 56 },
-];
+interface HumidityDataPoint {
+  time: string;
+  value: number;
+}
 
-export default function HumidityChart() {
+export default function HumidityChart({ data }: { data: HumidityDataPoint[] }) {
   return (
     <div style={{ width: "100%", height: 350 }}>
       <LineChart
@@ -39,13 +35,13 @@ export default function HumidityChart() {
         />
 
         <YAxis
-        width={90}
-        label={{
+          width={90}
+          label={{
             value: "Humidity (%RH)",
             angle: -90,
             position: "insideLeft",
             style: { textAnchor: "middle" },
-        }}
+          }}
         />
 
         <Tooltip />
@@ -60,4 +56,3 @@ export default function HumidityChart() {
     </div>
   );
 }
-

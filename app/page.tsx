@@ -1,40 +1,104 @@
-
 import CO2Chart from "@/components/CO2Chart";
 import EthyleneChart from "@/components/EthyleneChart";
 import TemperatureChart from "@/components/TemperatureChart";
 import HumidityChart from "@/components/HumidityChart";
+import MethaneChart from "@/components/MethaneChart";
+import { getDb } from "@/lib/mongodb";
 
-const co2Readings = [
-  { time: "09:00", value: "560 ppm", sensor: "SCD30" },
-  { time: "08:45", value: "510 ppm", sensor: "SCD30" },
-  { time: "08:30", value: "470 ppm", sensor: "SCD30" },
-  { time: "08:15", value: "440 ppm", sensor: "SCD30" },
-  { time: "08:00", value: "420 ppm", sensor: "SCD30" },
-];
+interface Reading {
+  metric: string;
+  value: number;
+  unit: string;
+}
 
-const ethyleneReadings = [
-  { time: "09:00", value: "0.09 ppm", sensor: "SPEC-C2H4" },
-  { time: "08:45", value: "0.08 ppm", sensor: "SPEC-C2H4" },
-  { time: "08:30", value: "0.07 ppm", sensor: "SPEC-C2H4" },
-  { time: "08:15", value: "0.06 ppm", sensor: "SPEC-C2H4" },
-  { time: "08:00", value: "0.05 ppm", sensor: "SPEC-C2H4" },
-];
+interface SensorDoc {
+  ts: number;
+  data: Reading[];
+}
 
-const temperatureReadings = [
-  { time: "09:00", value: "22.4 °C", sensor: "SHT31" },
-  { time: "08:45", value: "22.0 °C", sensor: "SHT31" },
-  { time: "08:30", value: "21.6 °C", sensor: "SHT31" },
-  { time: "08:15", value: "21.2 °C", sensor: "SHT31" },
-  { time: "08:00", value: "21.0 °C", sensor: "SHT31" },
-];
+// Shape of the raw document as stored in MongoDB (has _id + nested data field)
+interface MongoDoc {
+  _id: unknown;
+  data: SensorDoc;
+}
 
-const humidityReadings = [
-  { time: "09:00", value: "56 %RH", sensor: "SHT31" },
-  { time: "08:45", value: "54 %RH", sensor: "SHT31" },
-  { time: "08:30", value: "53 %RH", sensor: "SHT31" },
-  { time: "08:15", value: "51 %RH", sensor: "SHT31" },
-  { time: "08:00", value: "50 %RH", sensor: "SHT31" },
-];
+interface TableRow {
+  time: string;
+  value: string;
+  sensor: string;
+}
+
+interface ChartPoint {
+  time: string;
+  value: number;
+}
+
+// Converts a unix epoch timestamp (in seconds) into a readable time string, e.g. "14:32"
+function formatTime(ts: number): string {
+  const date = new Date(ts * 1000); // seconds -> milliseconds
+  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function extractMetricReadings(
+  docs: SensorDoc[],
+  metricName: string,
+  sensorLabel: string
+): TableRow[] {
+  const rows: TableRow[] = [];
+
+  for (const doc of docs) {
+    const match = doc.data?.find((d) => d.metric === metricName);
+    if (match) {
+      rows.push({
+        time: formatTime(doc.ts),
+        value: `${match.value} ${match.unit}`,
+        sensor: sensorLabel,
+      });
+    }
+    if (rows.length >= 5) break;
+  }
+
+  return rows;
+}
+
+function extractChartData(docs: SensorDoc[], metricName: string): ChartPoint[] {
+  return docs
+    .filter((doc) => doc.data?.some((d) => d.metric === metricName))
+    .map((doc) => {
+      const match = doc.data.find((d) => d.metric === metricName)!;
+      return {
+        time: formatTime(doc.ts),
+        value: match.value,
+      };
+    })
+    .reverse(); // docs come sorted newest-first; charts read left-to-right oldest-first
+}
+
+async function getAllReadings() {
+  const db = await getDb();
+  const rawDocs = (await db
+    .collection("DIRT")
+    .find({})
+    .sort({ "data.ts": -1 })
+    .limit(50)
+    .toArray()) as unknown as MongoDoc[];
+
+  // Unwrap the nested `data` field so downstream functions work with plain SensorDoc[]
+  const docs: SensorDoc[] = rawDocs.map((raw) => raw.data);
+
+  return {
+    co2Table: extractMetricReadings(docs, "co2", "SCD30"),
+    co2Chart: extractChartData(docs, "co2"),
+    ethyleneTable: extractMetricReadings(docs, "ethylene", "SPEC-C2H4"),
+    ethyleneChart: extractChartData(docs, "ethylene"),
+    temperatureTable: extractMetricReadings(docs, "temperature", "SHT31"),
+    temperatureChart: extractChartData(docs, "temperature"),
+    humidityTable: extractMetricReadings(docs, "humidity", "SHT31"),
+    humidityChart: extractChartData(docs, "humidity"),
+    methaneTable: extractMetricReadings(docs, "methane", "MQ4"),
+    methaneChart: extractChartData(docs, "methane"),
+  };
+}
 
 function RecentReadingsTable({
   readings,
@@ -77,7 +141,20 @@ function RecentReadingsTable({
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const {
+    co2Table,
+    co2Chart,
+    ethyleneTable,
+    ethyleneChart,
+    temperatureTable,
+    temperatureChart,
+    humidityTable,
+    humidityChart,
+    methaneTable,
+    methaneChart,
+  } = await getAllReadings();
+
   return (
     <main>
       <header className="dashboard-header">
@@ -104,9 +181,9 @@ export default function Home() {
           </div>
         </div>
 
-        <CO2Chart />
+        <CO2Chart data={co2Chart} />
 
-        <RecentReadingsTable readings={co2Readings} />
+        <RecentReadingsTable readings={co2Table} />
       </section>
 
       <section className="chart-card">
@@ -117,9 +194,9 @@ export default function Home() {
           </div>
         </div>
 
-        <EthyleneChart />
+        <EthyleneChart data={ethyleneChart} />
 
-        <RecentReadingsTable readings={ethyleneReadings} />
+        <RecentReadingsTable readings={ethyleneTable} />
       </section>
 
       <section className="chart-card">
@@ -130,9 +207,9 @@ export default function Home() {
           </div>
         </div>
 
-        <TemperatureChart />
+        <TemperatureChart data={temperatureChart} />
 
-        <RecentReadingsTable readings={temperatureReadings} />
+        <RecentReadingsTable readings={temperatureTable} />
       </section>
 
       <section className="chart-card">
@@ -143,11 +220,23 @@ export default function Home() {
           </div>
         </div>
 
-        <HumidityChart />
+        <HumidityChart data={humidityChart} />
 
-        <RecentReadingsTable readings={humidityReadings} />
+        <RecentReadingsTable readings={humidityTable} />
+      </section>
+
+      <section className="chart-card">
+        <div className="chart-header">
+          <div>
+            <h2>Methane Concentration</h2>
+            <p>Methane concentration over time</p>
+          </div>
+        </div>
+
+        <MethaneChart data={methaneChart} />
+
+        <RecentReadingsTable readings={methaneTable} />
       </section>
     </main>
   );
 }
-

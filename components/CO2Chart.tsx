@@ -10,15 +10,12 @@ import {
   Tooltip,
 } from "recharts";
 
-const data = [
-  { time: "08:00", value: 420 },
-  { time: "08:15", value: 440 },
-  { time: "08:30", value: 470 },
-  { time: "08:45", value: 510 },
-  { time: "09:00", value: 560 },
-];
+interface CO2DataPoint {
+  time: string;
+  value: number;
+}
 
-export default function CO2Chart() {
+export default function CO2Chart({ data }: { data: CO2DataPoint[] }) {
   return (
     <div style={{ width: "100%", height: 350 }}>
       <LineChart
@@ -39,13 +36,13 @@ export default function CO2Chart() {
         />
 
         <YAxis
-        width={90}
-        label={{
+          width={90}
+          label={{
             value: "CO₂ (ppm)",
             angle: -90,
             position: "insideLeft",
             style: { textAnchor: "middle" },
-        }}
+          }}
         />
 
         <Tooltip />
@@ -60,4 +57,3 @@ export default function CO2Chart() {
     </div>
   );
 }
-

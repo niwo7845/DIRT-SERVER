@@ -1,30 +1,18 @@
-import { MongoClient } from 'mongodb';
+import { MongoClient, Db } from 'mongodb';
 
 const uri = process.env.MONGODB_URI as string;
 
 if (!uri) {
-  throw new Error('Please add MONGODB_URI to .env.local');
+  throw new Error('Please add MONGODB_URI to your environment variables');
 }
 
-let client: MongoClient;
-let clientPromise: Promise<MongoClient>;
+const client = new MongoClient(uri);
+let db: Db;
 
-declare global {
-  // eslint-disable-next-line no-var
-  var _mongoClientPromise: Promise<MongoClient> | undefined;
-}
-
-if (process.env.NODE_ENV === 'development') {
-  // In dev, reuse the connection across hot-reloads
-  if (!global._mongoClientPromise) {
-    client = new MongoClient(uri);
-    global._mongoClientPromise = client.connect();
+export async function getDb(): Promise<Db> {
+  if (!db) {
+    await client.connect();
+    db = client.db('food-spoilage'); // change to your database name if different
   }
-  clientPromise = global._mongoClientPromise;
-} else {
-  // In production, just create one client per serverless instance
-  client = new MongoClient(uri);
-  clientPromise = client.connect();
+  return db;
 }
-
-export default clientPromise;

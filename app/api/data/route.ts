@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { getDb } from '@/lib/mongodb';
 
 interface SensorReading {
   metric: string;
@@ -14,19 +15,24 @@ interface SensorPayload {
 }
 
 export async function POST(request: NextRequest) {
-  const body: SensorPayload = await request.json();
-  let mongostatus: boolean;
-  // insert into MongoDB here
-
-
-  mongostatus = false;
-  return NextResponse.json({ message: 'Data received', mongostatus });
+  try {
+    const body = await request.json();
+    const db = await getDb();
+    const result = await db.collection('DIRT').insertOne(body);
+    return NextResponse.json({ message: 'Data received', id: result.insertedId }, { status: 201 });
+  } catch (err) {
+    console.error('POST /api/data error:', err);
+    return NextResponse.json({ error: 'Failed to insert data' }, { status: 500 });
+  }
 }
 
-
-
-export async function GET(request: NextRequest) {
-  // fetch from MongoDB here
-
-  return NextResponse.json({ data: [] });
+export async function GET() {
+  try {
+    const db = await getDb();
+    const data = await db.collection('DIRT').find({}).sort({ _id: -1 }).limit(50).toArray();
+    return NextResponse.json({ data });
+  } catch (err) {
+    console.error('GET /api/data error:', err);
+    return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
+  }
 }

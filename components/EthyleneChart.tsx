@@ -1,4 +1,3 @@
-
 "use client";
 
 import {
@@ -10,15 +9,12 @@ import {
   Tooltip,
 } from "recharts";
 
-const data = [
-  { time: "08:00", value: 0.05 },
-  { time: "08:15", value: 0.06 },
-  { time: "08:30", value: 0.07 },
-  { time: "08:45", value: 0.08 },
-  { time: "09:00", value: 0.09 },
-];
+interface EthyleneDataPoint {
+  time: string;
+  value: number;
+}
 
-export default function EthyleneChart() {
+export default function EthyleneChart({ data }: { data: EthyleneDataPoint[] }) {
   return (
     <div style={{ width: "100%", height: 350 }}>
       <LineChart
@@ -39,14 +35,14 @@ export default function EthyleneChart() {
         />
 
         <YAxis
-        width={90}
-        label={{
+          width={90}
+          label={{
             value: "Ethylene (ppm)",
             angle: -90,
             position: "insideLeft",
             offset: 10,
             style: { textAnchor: "middle" },
-        }}
+          }}
         />
 
         <Tooltip />
@@ -61,4 +57,3 @@ export default function EthyleneChart() {
     </div>
   );
 }
-

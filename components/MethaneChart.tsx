@@ -9,12 +9,12 @@ import {
   Tooltip,
 } from "recharts";
 
-interface TemperatureDataPoint {
+interface MethaneDataPoint {
   time: string;
   value: number;
 }
 
-export default function TemperatureChart({ data }: { data: TemperatureDataPoint[] }) {
+export default function MethaneChart({ data }: { data: MethaneDataPoint[] }) {
   return (
     <div style={{ width: "100%", height: 350 }}>
       <LineChart
@@ -37,7 +37,7 @@ export default function TemperatureChart({ data }: { data: TemperatureDataPoint[
         <YAxis
           width={90}
           label={{
-            value: "Temperature (°C)",
+            value: "Methane (ppm)",
             angle: -90,
             position: "insideLeft",
             style: { textAnchor: "middle" },
@@ -49,7 +49,7 @@ export default function TemperatureChart({ data }: { data: TemperatureDataPoint[
         <Line
           type="monotone"
           dataKey="value"
-          stroke="#3b82f6"
+          stroke="#ef4444"
           strokeWidth={3}
         />
       </LineChart>

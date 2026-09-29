@@ -2,6 +2,15 @@ This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-
 
 ## Getting Started
 
+If you just cloned this repo, it is best to run
+```bash
+npm build
+# or
+yarn build
+# or
+next build
+```
+
 First, run the development server:
 
 ```bash

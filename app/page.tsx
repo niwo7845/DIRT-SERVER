@@ -5,6 +5,8 @@ import HumidityChart from "@/components/HumidityChart";
 import MethaneChart from "@/components/MethaneChart";
 import { getDb } from "@/lib/mongodb";
 
+export const revalidate = 60;
+
 interface Reading {
   metric: string;
   value: number;

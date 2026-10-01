@@ -35,12 +35,11 @@ export default function ActiveCollectionControl({
       if (!res.ok) {
         throw new Error("Failed to update");
       }
-
-      router.refresh();
     } catch {
       setError("Failed to update active collection");
     } finally {
       setSaving(false);
+      router.refresh();
     }
   }
 

@@ -6,7 +6,7 @@ import MethaneChart from "@/components/MethaneChart";
 import ActiveCollectionControl from "@/components/ActiveCollectionControl";
 import { getDb } from "@/lib/mongodb";
 
-export const revalidate = 10;
+export const dynamic = "force-dynamic";
 
 interface Reading {
   metric: string;

@@ -6,7 +6,7 @@ import MethaneChart from "@/components/MethaneChart";
 import ActiveCollectionControl from "@/components/ActiveCollectionControl";
 import { getDb } from "@/lib/mongodb";
 
-export const revalidate = 60;
+export const revalidate = 10;
 
 interface Reading {
   metric: string;
@@ -197,8 +197,6 @@ export default async function Home() {
             Real-time environmental monitoring
           </p>
         </div>
-
-        <div className="status">System Online</div>
       </header>
 
       <section className="run-card">

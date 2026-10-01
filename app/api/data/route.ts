@@ -1,39 +1,52 @@
-import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/mongodb";
+import { NextRequest, NextResponse } from 'next/server';
+import { getDb } from '@/lib/mongodb';
 
-
+interface SensorReading {
+  metric: string;
+  value: number;
+  unit: string;
+}
 interface ConfigDoc {
   _id: string;
   value: string;
 }
 
-export async function GET() {
-  const db = await getDb();
-  const config = await db
-  .collection<ConfigDoc>("config")
-  .findOne({ _id: "activeCollection" });
-  const targetCollection = config?.value || "DIRT";
-  return NextResponse.json({ activeCollection: config?.value || "DIRT" });
+interface SensorPayload {
+  samples: {
+    ts: number;
+    sensordata: SensorReading[];
+  }[];
 }
 
 export async function POST(request: NextRequest) {
   try {
-    const { collection } = await request.json();
-
-    if (!collection || typeof collection !== "string") {
-      return NextResponse.json({ error: "Missing or invalid 'collection' field" }, { status: 400 });
-    }
-
+    const body = await request.json();
     const db = await getDb();
-    await db.collection<ConfigDoc>("config").updateOne(
-      { _id: "activeCollection" },
-      { $set: { value: collection } },
-      { upsert: true }
-    );
+    const collection_entry = await db
+    .collection<ConfigDoc>("config")
+    .findOne({ _id: "activeCollection" });
+    const collectionName = collection_entry?.value || "DIRT";
+    console.log(collectionName);
 
-    return NextResponse.json({ message: "Active collection updated", collection });
+    const result = await db.collection(collectionName).insertOne(body);
+    return NextResponse.json({ message: 'Data received', id: result.insertedId }, { status: 201 });
   } catch (err) {
-    console.error("POST /api/config error:", err);
-    return NextResponse.json({ error: "Failed to update config" }, { status: 500 });
+    console.error('POST /api/data error:', err);
+    return NextResponse.json({ error: 'Failed to insert data' }, { status: 500 });
+  }
+}
+
+export async function GET() {
+  try {
+    const db = await getDb();
+    const collection_entry = await db
+    .collection<ConfigDoc>("config")
+    .findOne({ _id: "activeCollection" });
+    const collectionName = collection_entry?.value || "DIRT";
+    const data = await db.collection(collectionName).find({}).sort({ _id: -1 }).limit(50).toArray();
+    return NextResponse.json({ data });
+  } catch (err) {
+    console.error('GET /api/data error:', err);
+    return NextResponse.json({ error: 'Failed to fetch data' }, { status: 500 });
   }
 }

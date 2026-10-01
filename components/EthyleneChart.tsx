@@ -52,6 +52,7 @@ export default function EthyleneChart({ data }: { data: EthyleneDataPoint[] }) {
           dataKey="value"
           stroke="#f59e0b"
           strokeWidth={3}
+          dot={false}
         />
       </LineChart>
     </div>

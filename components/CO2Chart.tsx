@@ -52,6 +52,7 @@ export default function CO2Chart({ data }: { data: CO2DataPoint[] }) {
           dataKey="value"
           stroke="#22c55e"
           strokeWidth={3}
+          dot={false}
         />
       </LineChart>
     </div>

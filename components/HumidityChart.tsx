@@ -51,6 +51,7 @@ export default function HumidityChart({ data }: { data: HumidityDataPoint[] }) {
           dataKey="value"
           stroke="#8b5cf6"
           strokeWidth={3}
+          dot={false}
         />
       </LineChart>
     </div>

@@ -3,6 +3,7 @@ import EthyleneChart from "@/components/EthyleneChart";
 import TemperatureChart from "@/components/TemperatureChart";
 import HumidityChart from "@/components/HumidityChart";
 import MethaneChart from "@/components/MethaneChart";
+import ActiveCollectionControl from "@/components/ActiveCollectionControl";
 import { getDb } from "@/lib/mongodb";
 
 export const revalidate = 60;
@@ -18,7 +19,6 @@ interface SensorDoc {
   data: Reading[];
 }
 
-// Shape of the raw document as stored in MongoDB (has _id + nested data field)
 interface MongoDoc {
   _id: unknown;
   data: SensorDoc;
@@ -35,10 +35,18 @@ interface ChartPoint {
   value: number;
 }
 
-// Converts a unix epoch timestamp (in seconds) into a readable time string, e.g. "14:32"
+interface ConfigDoc {
+  _id: string;
+  value: string;
+}
+
 function formatTime(ts: number): string {
-  const date = new Date(ts * 1000); // seconds -> milliseconds
-  return date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const date = new Date(ts * 1000);
+  return date.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "America/Denver",
+  });
 }
 
 function extractMetricReadings(
@@ -63,29 +71,50 @@ function extractMetricReadings(
   return rows;
 }
 
+function averageBuckets(points: ChartPoint[], bucketSize: number): ChartPoint[] {
+  const result: ChartPoint[] = [];
+
+  for (let i = 0; i < points.length; i += bucketSize) {
+    const bucket = points.slice(i, i + bucketSize);
+    const avgValue = bucket.reduce((sum, p) => sum + p.value, 0) / bucket.length;
+    result.push({
+      time: bucket[Math.floor(bucket.length / 2)].time,
+      value: Math.round(avgValue * 100) / 100,
+    });
+  }
+
+  return result;
+}
+
 function extractChartData(docs: SensorDoc[], metricName: string): ChartPoint[] {
-  return docs
+  const points = docs
     .filter((doc) => doc.data?.some((d) => d.metric === metricName))
     .map((doc) => {
       const match = doc.data.find((d) => d.metric === metricName)!;
-      return {
-        time: formatTime(doc.ts),
-        value: match.value,
-      };
+      return { time: formatTime(doc.ts), value: match.value };
     })
-    .reverse(); // docs come sorted newest-first; charts read left-to-right oldest-first
+    .reverse();
+
+  return averageBuckets(points, 10);
 }
 
-async function getAllReadings() {
+async function getActiveCollectionName(): Promise<string> {
+  const db = await getDb();
+  const config = await db
+    .collection<ConfigDoc>("config")
+    .findOne({ _id: "activeCollection" });
+  return config?.value || "DIRT";
+}
+
+async function getAllReadings(collectionName: string) {
   const db = await getDb();
   const rawDocs = (await db
-    .collection("DIRT")
+    .collection(collectionName)
     .find({})
     .sort({ "data.ts": -1 })
-    .limit(50)
+    .limit(2000)
     .toArray()) as unknown as MongoDoc[];
 
-  // Unwrap the nested `data` field so downstream functions work with plain SensorDoc[]
   const docs: SensorDoc[] = rawDocs.map((raw) => raw.data);
 
   return {
@@ -144,6 +173,8 @@ function RecentReadingsTable({
 }
 
 export default async function Home() {
+  const activeCollection = await getActiveCollectionName();
+
   const {
     co2Table,
     co2Chart,
@@ -155,7 +186,7 @@ export default async function Home() {
     humidityChart,
     methaneTable,
     methaneChart,
-  } = await getAllReadings();
+  } = await getAllReadings(activeCollection);
 
   return (
     <main>
@@ -172,7 +203,8 @@ export default async function Home() {
 
       <section className="run-card">
         <p className="run-card-label">Current Monitoring Run</p>
-        <h2>RUN-2026-001 — Banana</h2>
+        <h2>{activeCollection}</h2>
+        <ActiveCollectionControl currentCollection={activeCollection} collections={["DIRT", "Banana0", "Control0"]} />
       </section>
 
       <section className="chart-card">

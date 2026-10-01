@@ -51,6 +51,7 @@ export default function MethaneChart({ data }: { data: MethaneDataPoint[] }) {
           dataKey="value"
           stroke="#ef4444"
           strokeWidth={3}
+          dot={false}
         />
       </LineChart>
     </div>

@@ -51,6 +51,7 @@ export default function TemperatureChart({ data }: { data: TemperatureDataPoint[
           dataKey="value"
           stroke="#3b82f6"
           strokeWidth={3}
+          dot={false}
         />
       </LineChart>
     </div>

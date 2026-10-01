@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getDb } from "@/lib/mongodb";
 
-
 interface ConfigDoc {
   _id: string;
   value: string;
@@ -10,9 +9,8 @@ interface ConfigDoc {
 export async function GET() {
   const db = await getDb();
   const config = await db
-  .collection<ConfigDoc>("config")
-  .findOne({ _id: "activeCollection" });
-  const targetCollection = config?.value || "DIRT";
+    .collection<ConfigDoc>("config")
+    .findOne({ _id: "activeCollection" });
   return NextResponse.json({ activeCollection: config?.value || "DIRT" });
 }
 

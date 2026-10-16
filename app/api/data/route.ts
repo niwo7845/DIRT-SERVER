@@ -11,13 +11,6 @@ interface ConfigDoc {
   value: string;
 }
 
-interface SensorPayload {
-  samples: {
-    ts: number;
-    sensordata: SensorReading[];
-  }[];
-}
-
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
@@ -43,6 +36,7 @@ export async function GET() {
     .collection<ConfigDoc>("config")
     .findOne({ _id: "activeCollection" });
     const collectionName = collection_entry?.value || "DIRT";
+
     const data = await db.collection(collectionName).find({}).sort({ _id: -1 }).limit(50).toArray();
     return NextResponse.json({ data });
   } catch (err) {

@@ -80,8 +80,7 @@ export default function ActiveCollectionControl({
           ))}
 
           <option value="__new__">
-            DO NOT CLICK - NOT IMPLEMENTED
-            {/* + Create new collection... */}
+            + Create new collection...
           </option>
         </select>
       </div>

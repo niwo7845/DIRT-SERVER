@@ -1,12 +1,14 @@
-import CO2Chart from "@/components/CO2Chart";
-import EthyleneChart from "@/components/EthyleneChart";
-import TemperatureChart from "@/components/TemperatureChart";
-import HumidityChart from "@/components/HumidityChart";
-import MethaneChart from "@/components/MethaneChart";
+
+import MetricChart from "@/components/MetricChart";
+import { Sample, compressSamples } from "@/lib/metrics";
 import ActiveCollectionControl from "@/components/ActiveCollectionControl";
+import ViewCollectionSelector from "@/components/ViewCollectionSelector";
 import { getDb } from "@/lib/mongodb";
 
 export const dynamic = "force-dynamic";
+
+const MAX_DOCS = 50000; // most documents to read per page load (~5 weeks at 1/min)
+
 
 interface Reading {
   metric: string;
@@ -28,11 +30,6 @@ interface TableRow {
   time: string;
   value: string;
   sensor: string;
-}
-
-interface ChartPoint {
-  time: string;
-  value: number;
 }
 
 interface ConfigDoc {
@@ -67,35 +64,19 @@ function extractMetricReadings(
     }
     if (rows.length >= 5) break;
   }
-
   return rows;
 }
 
-function averageBuckets(points: ChartPoint[], bucketSize: number): ChartPoint[] {
-  const result: ChartPoint[] = [];
-
-  for (let i = 0; i < points.length; i += bucketSize) {
-    const bucket = points.slice(i, i + bucketSize);
-    const avgValue = bucket.reduce((sum, p) => sum + p.value, 0) / bucket.length;
-    result.push({
-      time: bucket[Math.floor(bucket.length / 2)].time,
-      value: Math.round(avgValue * 100) / 100,
-    });
-  }
-
-  return result;
-}
-
-function extractChartData(docs: SensorDoc[], metricName: string): ChartPoint[] {
-  const points = docs
-    .filter((doc) => doc.data?.some((d) => d.metric === metricName))
+function flattenDocs(docs: SensorDoc[]): Sample[] {
+  return docs
     .map((doc) => {
-      const match = doc.data.find((d) => d.metric === metricName)!;
-      return { time: formatTime(doc.ts), value: match.value };
+      const sample: Sample = { ts: doc.ts };
+      for (const reading of doc.data ?? []) {
+        sample[reading.metric] = reading.value;
+      }
+      return sample;
     })
-    .reverse();
-
-  return averageBuckets(points, 10);
+    .reverse(); // docs arrive newest-first; charts want oldest-first
 }
 
 async function getActiveCollectionName(): Promise<string> {
@@ -106,28 +87,31 @@ async function getActiveCollectionName(): Promise<string> {
   return config?.value || "DIRT";
 }
 
+async function getCollections() {
+  const db = await getDb();
+  const collections =  await db.listCollections().toArray();
+  return collections.map((col) => col.name);
+}
+
+
 async function getAllReadings(collectionName: string) {
   const db = await getDb();
   const rawDocs = (await db
     .collection(collectionName)
     .find({})
     .sort({ "data.ts": -1 })
-    .limit(2000)
+    .limit(MAX_DOCS)
     .toArray()) as unknown as MongoDoc[];
 
   const docs: SensorDoc[] = rawDocs.map((raw) => raw.data);
 
   return {
+    samples: compressSamples(flattenDocs(docs)),
     co2Table: extractMetricReadings(docs, "co2", "SCD30"),
-    co2Chart: extractChartData(docs, "co2"),
     ethyleneTable: extractMetricReadings(docs, "ethylene", "SPEC-C2H4"),
-    ethyleneChart: extractChartData(docs, "ethylene"),
     temperatureTable: extractMetricReadings(docs, "temperature", "SHT31"),
-    temperatureChart: extractChartData(docs, "temperature"),
     humidityTable: extractMetricReadings(docs, "humidity", "SHT31"),
-    humidityChart: extractChartData(docs, "humidity"),
     methaneTable: extractMetricReadings(docs, "methane", "MQ4"),
-    methaneChart: extractChartData(docs, "methane"),
   };
 }
 
@@ -172,21 +156,32 @@ function RecentReadingsTable({
   );
 }
 
-export default async function Home() {
-  const activeCollection = await getActiveCollectionName();
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ view?: string }>;
+}) {
+  const params = await searchParams;
+  const activeCollection = await getActiveCollectionName(); // where the ESP32 is writing
+  const collections = await getCollections();
+
+  // Which run is being displayed: ?view=... if valid, otherwise follow the ESP32's collection
+  const viewedCollection =
+    params.view && collections.includes(params.view)
+      ? params.view
+      : activeCollection;
+
+  const viewOptions = Array.from(new Set([...collections, viewedCollection]));
+  const recordOptions = Array.from(new Set([...collections, activeCollection]));
 
   const {
+    samples,
     co2Table,
-    co2Chart,
     ethyleneTable,
-    ethyleneChart,
     temperatureTable,
-    temperatureChart,
     humidityTable,
-    humidityChart,
     methaneTable,
-    methaneChart,
-  } = await getAllReadings(activeCollection);
+  } = await getAllReadings(viewedCollection);
 
   return (
     <main>
@@ -200,9 +195,22 @@ export default async function Home() {
       </header>
 
       <section className="run-card">
-        <p className="run-card-label">Current Monitoring Run</p>
-        <h2>{activeCollection}</h2>
-        <ActiveCollectionControl currentCollection={activeCollection} collections={["DIRT", "Banana0", "Control0"]} />
+        <div>
+          <p className="run-card-label">Currently Viewing</p>
+          <h2>{viewedCollection}</h2>
+          <ViewCollectionSelector
+            collections={viewOptions}
+            selected={viewedCollection}
+          />
+        </div>
+        <div style={{background:"#ff696987",borderRadius: "16px", padding:"15px"}}>
+          <p className="run-card-label">Push Data To</p>
+          <h2>{activeCollection}</h2>
+          <ActiveCollectionControl
+            currentCollection={activeCollection}
+            collections={recordOptions}
+          />
+        </div>
       </section>
 
       <section className="chart-card">
@@ -213,7 +221,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <CO2Chart data={co2Chart} />
+        <MetricChart data={samples} yKey="co2" />
 
         <RecentReadingsTable readings={co2Table} />
       </section>
@@ -226,7 +234,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <EthyleneChart data={ethyleneChart} />
+        <MetricChart data={samples} yKey="ethylene" />
 
         <RecentReadingsTable readings={ethyleneTable} />
       </section>
@@ -239,7 +247,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <TemperatureChart data={temperatureChart} />
+        <MetricChart data={samples} yKey="temperature" />
 
         <RecentReadingsTable readings={temperatureTable} />
       </section>
@@ -252,7 +260,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <HumidityChart data={humidityChart} />
+        <MetricChart data={samples} yKey="humidity" />
 
         <RecentReadingsTable readings={humidityTable} />
       </section>
@@ -265,7 +273,7 @@ export default async function Home() {
           </div>
         </div>
 
-        <MethaneChart data={methaneChart} />
+        <MetricChart data={samples} yKey="methane" />
 
         <RecentReadingsTable readings={methaneTable} />
       </section>

@@ -61,10 +61,13 @@ main {
 /* Current run */
 
 .run-card {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
   background: #0f172a;
   color: white;
   border-radius: 16px;
-  padding: 24px 28px;
+  padding: 24px 50px;
   margin-bottom: 28px;
 }
 

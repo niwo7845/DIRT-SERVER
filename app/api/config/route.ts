@@ -1,17 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getDb } from "@/lib/mongodb";
-
-interface ConfigDoc {
-  _id: string;
-  value: string;
-}
+import { getActiveCollection, getDataCollections, setActiveCollection, NO_RECORD } from "@/lib/config";
+import { validateCollectionName } from "@/lib/recording";
 
 export async function GET() {
-  const db = await getDb();
-  const config = await db
-    .collection<ConfigDoc>("config")
-    .findOne({ _id: "activeCollection" });
-  return NextResponse.json({ activeCollection: config?.value || "DIRT" });
+  return NextResponse.json({ activeCollection: await getActiveCollection() });
 }
 
 export async function POST(request: NextRequest) {
@@ -22,12 +14,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Missing or invalid 'collection' field" }, { status: 400 });
     }
 
-    const db = await getDb();
-    await db.collection<ConfigDoc>("config").updateOne(
-      { _id: "activeCollection" },
-      { $set: { value: collection } },
-      { upsert: true }
-    );
+    // Existing collections and NO_RECORD are always allowed; new names must be valid.
+    const known = collection === NO_RECORD || (await getDataCollections()).includes(collection);
+    const nameError = known ? null : validateCollectionName(collection);
+    if (nameError) {
+      return NextResponse.json({ error: nameError }, { status: 400 });
+    }
+
+    await setActiveCollection(collection);
 
     return NextResponse.json({ message: "Active collection updated", collection });
   } catch (err) {

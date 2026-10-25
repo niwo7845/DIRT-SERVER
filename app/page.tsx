@@ -4,11 +4,11 @@ import { Sample, compressSamples } from "@/lib/metrics";
 import ActiveCollectionControl from "@/components/ActiveCollectionControl";
 import ViewCollectionSelector from "@/components/ViewCollectionSelector";
 import { getDb } from "@/lib/mongodb";
+import { getActiveCollection, getDataCollections, DEFAULT_COLLECTION, NO_RECORD } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
 
 const MAX_DOCS = 50000; // most documents to read per page load (~5 weeks at 1/min)
-
 
 interface Reading {
   metric: string;
@@ -30,11 +30,6 @@ interface TableRow {
   time: string;
   value: string;
   sensor: string;
-}
-
-interface ConfigDoc {
-  _id: string;
-  value: string;
 }
 
 function formatTime(ts: number): string {
@@ -77,20 +72,6 @@ function flattenDocs(docs: SensorDoc[]): Sample[] {
       return sample;
     })
     .reverse(); // docs arrive newest-first; charts want oldest-first
-}
-
-async function getActiveCollectionName(): Promise<string> {
-  const db = await getDb();
-  const config = await db
-    .collection<ConfigDoc>("config")
-    .findOne({ _id: "activeCollection" });
-  return config?.value || "DIRT";
-}
-
-async function getCollections() {
-  const db = await getDb();
-  const collections =  await db.listCollections().toArray();
-  return collections.map((col) => col.name);
 }
 
 
@@ -162,17 +143,23 @@ export default async function Home({
   searchParams: Promise<{ view?: string }>;
 }) {
   const params = await searchParams;
-  const activeCollection = await getActiveCollectionName(); // where the ESP32 is writing
-  const collections = await getCollections();
+  const activeCollection = await getActiveCollection(); // where the ESP32 is writing, or NO_RECORD
+  const recording = activeCollection !== NO_RECORD;
+  const collections = await getDataCollections();
 
   // Which run is being displayed: ?view=... if valid, otherwise follow the ESP32's collection
+  // (or the first existing collection when nothing is being recorded)
   const viewedCollection =
     params.view && collections.includes(params.view)
       ? params.view
-      : activeCollection;
+      : recording
+        ? activeCollection
+        : collections[0] ?? DEFAULT_COLLECTION;
 
   const viewOptions = Array.from(new Set([...collections, viewedCollection]));
-  const recordOptions = Array.from(new Set([...collections, activeCollection]));
+  const recordOptions = recording
+    ? Array.from(new Set([...collections, activeCollection]))
+    : collections;
 
   const {
     samples,
@@ -203,9 +190,9 @@ export default async function Home({
             selected={viewedCollection}
           />
         </div>
-        <div style={{background:"#ff696987",borderRadius: "16px", padding:"15px"}}>
+        <div style={{background: recording ? "#ff696987" : "#94a3b833", borderRadius: "16px", padding:"15px"}}>
           <p className="run-card-label">Push Data To</p>
-          <h2>{activeCollection}</h2>
+          <h2>{recording ? activeCollection : "Not recording"}</h2>
           <ActiveCollectionControl
             currentCollection={activeCollection}
             collections={recordOptions}

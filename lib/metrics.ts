@@ -19,8 +19,8 @@ export const METRICS: Record<string, MetricInfo> = {
   co2: { label: "CO₂", unit: "ppm", color: "#22c55e" },
   ethylene: { label: "Ethylene", unit: "ppm", color: "#f59e0b" },
   methane: { label: "Methane", unit: "ppm", color: "#ef4444" },
-  temperature: { label: "Temperature", unit: "°F", color: "#3b82f6" }, // change to °C if you convert
-  humidity: { label: "Humidity", unit: "%RH", color: "#8b5cf6" },
+  temperature: { label: "Temperature", unit: "°C", color: "#3b82f6" }, // the ESP32 sends Celsius
+  humidity: { label: "Humidity", unit: "%", color: "#8b5cf6" },
 };
 // =====================================================
 

@@ -1,6 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { getActiveCollection, NO_RECORD } from '@/lib/config';
+import { getAnnotation } from '@/lib/annotationStore';
+import { stageForTs } from '@/lib/annotations';
+
+// Labels a reading as it arrives, so an ongoing final stage keeps labeling new data
+// without anyone having to re-apply the annotation. Never blocks the insert.
+async function classificationFor(collectionName: string, ts: unknown) {
+  if (typeof ts !== 'number' || !Number.isFinite(ts)) return null;
+
+  try {
+    const { stages, ranges } = await getAnnotation(collectionName);
+    const match = stageForTs(ts, stages, ranges);
+    if (!match) return null;
+
+    return {
+      classification: match.stage.name,
+      classificationIndex: match.index,
+      classifiedAt: new Date(),
+    };
+  } catch (err) {
+    console.error('POST /api/data classification lookup failed:', err);
+    return null;
+  }
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -12,8 +35,12 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Recording disabled, data discarded' }, { status: 200 });
     }
 
+    const classification = await classificationFor(collectionName, body?.data?.ts);
+
     const db = await getDb();
-    const result = await db.collection(collectionName).insertOne(body);
+    const result = await db
+      .collection(collectionName)
+      .insertOne(classification ? { ...body, ...classification } : body);
     return NextResponse.json({ message: 'Data received', id: result.insertedId }, { status: 201 });
   } catch (err) {
     console.error('POST /api/data error:', err);

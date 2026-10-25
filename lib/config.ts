@@ -51,6 +51,18 @@ export async function registerCollection(name: string): Promise<void> {
   );
 }
 
+// Which run a page is showing: ?view=... when it names a real collection, otherwise
+// follow the ESP32 (or the first existing collection when nothing is being recorded).
+export function resolveViewedCollection(
+  view: string | undefined,
+  collections: string[],
+  activeCollection: string
+): string {
+  if (view && collections.includes(view)) return view;
+  if (activeCollection !== NO_RECORD) return activeCollection;
+  return collections[0] ?? DEFAULT_COLLECTION;
+}
+
 // Names of all data collections, oldest first.
 export async function getDataCollections(): Promise<string[]> {
   const db = await getDb();

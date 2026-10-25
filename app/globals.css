@@ -555,3 +555,379 @@ tbody tr:hover {
 .collectionModalButtonPrimary:hover:not(:disabled) {
   background: #15803d;
 }
+
+/* Header navigation */
+
+.nav-button {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding: 0 18px;
+
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+
+  background: #fff;
+  color: #0f172a;
+
+  font-size: 0.9rem;
+  font-weight: 600;
+  text-decoration: none;
+
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.nav-button:hover {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+/* Annotation page */
+
+.annot-run-meta {
+  text-align: right;
+}
+
+.annot-run-note {
+  margin: 6px 0 0;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.annot-empty {
+  margin: 4px 0 0;
+  color: #64748b;
+  font-size: 0.9rem;
+}
+
+/* Light form kit — the .activeCollection* one is styled for the dark run card */
+
+.annot-input,
+.annot-select {
+  height: 34px;
+  padding: 0 12px;
+
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+
+  background: #fff;
+  color: #0f172a;
+
+  font-family: inherit;
+  font-size: 13px;
+
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+
+.annot-select {
+  padding-right: 8px;
+}
+
+.annot-input:focus,
+.annot-select:focus {
+  border-color: #6478a0;
+  box-shadow: 0 0 0 2px rgba(100, 120, 160, 0.18);
+}
+
+.annot-input:disabled,
+.annot-select:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.annot-button {
+  height: 34px;
+  padding: 0 14px;
+
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+
+  background: #fff;
+  color: #0f172a;
+
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+
+  transition: background 0.15s, border-color 0.15s;
+}
+
+.annot-button:hover:not(:disabled) {
+  border-color: #94a3b8;
+  background: #f8fafc;
+}
+
+.annot-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.annot-button-primary {
+  border-color: #16a34a;
+  background: #16a34a;
+  color: #fff;
+}
+
+.annot-button-primary:hover:not(:disabled) {
+  border-color: #15803d;
+  background: #15803d;
+}
+
+.annot-error {
+  color: #dc2626;
+  font-size: 12px;
+}
+
+.annot-status {
+  color: #64748b;
+  font-size: 12px;
+}
+
+p.annot-error {
+  margin: 10px 0 0;
+}
+
+/* Stage editor */
+
+.stage-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.stage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 8px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.stage-index {
+  width: 22px;
+
+  color: #94a3b8;
+  font-size: 12px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.stage-color {
+  width: 34px;
+  height: 34px;
+  padding: 2px;
+
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+
+  background: #fff;
+  cursor: pointer;
+}
+
+.stage-name {
+  flex: 1;
+  min-width: 0;
+  max-width: 280px;
+}
+
+.stage-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.stage-add {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+
+  margin-top: 14px;
+}
+
+.annot-savebar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  margin-top: 18px;
+  padding-top: 16px;
+  border-top: 1px solid #e2e8f0;
+}
+
+.annot-savebar-message {
+  flex: 1;
+  min-width: 0;
+}
+
+.annot-chart-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+/* Range editor */
+
+.range-list {
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.range-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+
+  padding: 10px 0;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.range-swatch {
+  width: 12px;
+  height: 28px;
+  border-radius: 4px;
+  flex: none;
+}
+
+.range-stage {
+  min-width: 130px;
+}
+
+.range-arrow {
+  color: #94a3b8;
+  font-size: 13px;
+}
+
+.range-ongoing {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  color: #64748b;
+  font-size: 12px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.range-count {
+  color: #94a3b8;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.range-delete {
+  margin-left: auto;
+}
+
+/* Stage bands on the charts */
+
+.annotation-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #f1f5f9;
+}
+
+.annotation-legend-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.annotation-legend-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  opacity: 0.55;
+}
+
+/* Drag-to-select */
+
+.chart-drag-band {
+  fill: #0f172a;
+  fill-opacity: 0.1;
+  stroke: #0f172a;
+  stroke-opacity: 0.35;
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+  pointer-events: none;
+}
+
+.annot-drag-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+
+  margin: 4px 0 14px;
+  padding: 10px 14px;
+
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+
+  background: #eff6ff;
+  color: #1e3a8a;
+  font-size: 13px;
+}
+
+.annot-button[aria-pressed="true"] {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+.chart-nav-button[aria-pressed="true"] {
+  border-color: #0f172a;
+  background: #0f172a;
+  color: #fff;
+}
+
+/* Stage separators on the chart */
+
+.chart-boundary {
+  stroke: #0f172a;
+  stroke-width: 1.5;
+  stroke-opacity: 0.55;
+  pointer-events: none;
+}
+
+.chart-boundary-grip {
+  fill: #0f172a;
+  fill-opacity: 0.55;
+}
+
+line.chart-boundary-active,
+rect.chart-boundary-active {
+  stroke-opacity: 1;
+  fill-opacity: 1;
+}
+
+.range-name {
+  min-width: 90px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.annot-outside {
+  margin: 14px 0 0;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.annot-outside strong {
+  color: #0f172a;
+  font-variant-numeric: tabular-nums;
+}

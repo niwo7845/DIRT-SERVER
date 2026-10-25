@@ -1,30 +1,14 @@
-
+import Link from "next/link";
 import MetricChart from "@/components/MetricChart";
-import { Sample, compressSamples } from "@/lib/metrics";
 import ActiveCollectionControl from "@/components/ActiveCollectionControl";
 import ViewCollectionSelector from "@/components/ViewCollectionSelector";
-import { getDb } from "@/lib/mongodb";
-import { getActiveCollection, getDataCollections, DEFAULT_COLLECTION, NO_RECORD } from "@/lib/config";
+import { SensorDoc, getSensorDocs, toSamples } from "@/lib/readings";
+import { getMetric } from "@/lib/metrics";
+import { getAnnotation } from "@/lib/annotationStore";
+import { TIME_ZONE } from "@/lib/time";
+import { getActiveCollection, getDataCollections, resolveViewedCollection, NO_RECORD } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
-
-const MAX_DOCS = 50000; // most documents to read per page load (~5 weeks at 1/min)
-
-interface Reading {
-  metric: string;
-  value: number;
-  unit: string;
-}
-
-interface SensorDoc {
-  ts: number;
-  data: Reading[];
-}
-
-interface MongoDoc {
-  _id: unknown;
-  data: SensorDoc;
-}
 
 interface TableRow {
   time: string;
@@ -37,7 +21,7 @@ function formatTime(ts: number): string {
   return date.toLocaleTimeString([], {
     hour: "2-digit",
     minute: "2-digit",
-    timeZone: "America/Denver",
+    timeZone: TIME_ZONE,
   });
 }
 
@@ -48,12 +32,16 @@ function extractMetricReadings(
 ): TableRow[] {
   const rows: TableRow[] = [];
 
+  // The device's own unit strings are raw ("C", "percent"), so display the
+  // registry's instead to match the chart axes.
+  const unit = getMetric(metricName).unit;
+
   for (const doc of docs) {
     const match = doc.data?.find((d) => d.metric === metricName);
     if (match) {
       rows.push({
         time: formatTime(doc.ts),
-        value: `${match.value} ${match.unit}`,
+        value: `${match.value} ${unit}`,
         sensor: sensorLabel,
       });
     }
@@ -62,32 +50,11 @@ function extractMetricReadings(
   return rows;
 }
 
-function flattenDocs(docs: SensorDoc[]): Sample[] {
-  return docs
-    .map((doc) => {
-      const sample: Sample = { ts: doc.ts };
-      for (const reading of doc.data ?? []) {
-        sample[reading.metric] = reading.value;
-      }
-      return sample;
-    })
-    .reverse(); // docs arrive newest-first; charts want oldest-first
-}
-
-
 async function getAllReadings(collectionName: string) {
-  const db = await getDb();
-  const rawDocs = (await db
-    .collection(collectionName)
-    .find({})
-    .sort({ "data.ts": -1 })
-    .limit(MAX_DOCS)
-    .toArray()) as unknown as MongoDoc[];
-
-  const docs: SensorDoc[] = rawDocs.map((raw) => raw.data);
+  const docs = await getSensorDocs(collectionName);
 
   return {
-    samples: compressSamples(flattenDocs(docs)),
+    samples: toSamples(docs),
     co2Table: extractMetricReadings(docs, "co2", "SCD30"),
     ethyleneTable: extractMetricReadings(docs, "ethylene", "SPEC-C2H4"),
     temperatureTable: extractMetricReadings(docs, "temperature", "SHT31"),
@@ -137,29 +104,22 @@ function RecentReadingsTable({
   );
 }
 
-export default async function Home({
-  searchParams,
-}: {
-  searchParams: Promise<{ view?: string }>;
-}) {
+export default async function Home({ searchParams }: PageProps<"/">) {
   const params = await searchParams;
+  const view = typeof params.view === "string" ? params.view : undefined;
+
   const activeCollection = await getActiveCollection(); // where the ESP32 is writing, or NO_RECORD
   const recording = activeCollection !== NO_RECORD;
   const collections = await getDataCollections();
 
-  // Which run is being displayed: ?view=... if valid, otherwise follow the ESP32's collection
-  // (or the first existing collection when nothing is being recorded)
-  const viewedCollection =
-    params.view && collections.includes(params.view)
-      ? params.view
-      : recording
-        ? activeCollection
-        : collections[0] ?? DEFAULT_COLLECTION;
+  const viewedCollection = resolveViewedCollection(view, collections, activeCollection);
 
   const viewOptions = Array.from(new Set([...collections, viewedCollection]));
   const recordOptions = recording
     ? Array.from(new Set([...collections, activeCollection]))
     : collections;
+
+  const annotation = await getAnnotation(viewedCollection);
 
   const {
     samples,
@@ -179,6 +139,13 @@ export default async function Home({
             Real-time environmental monitoring
           </p>
         </div>
+
+        <Link
+          href={`/annotate?view=${encodeURIComponent(viewedCollection)}`}
+          className="nav-button"
+        >
+          Annotate data →
+        </Link>
       </header>
 
       <section className="run-card">
@@ -208,7 +175,7 @@ export default async function Home({
           </div>
         </div>
 
-        <MetricChart data={samples} yKey="co2" />
+        <MetricChart annotations={annotation} data={samples} yKey="co2" />
 
         <RecentReadingsTable readings={co2Table} />
       </section>
@@ -221,7 +188,7 @@ export default async function Home({
           </div>
         </div>
 
-        <MetricChart data={samples} yKey="ethylene" />
+        <MetricChart annotations={annotation} data={samples} yKey="ethylene" />
 
         <RecentReadingsTable readings={ethyleneTable} />
       </section>
@@ -234,7 +201,7 @@ export default async function Home({
           </div>
         </div>
 
-        <MetricChart data={samples} yKey="temperature" />
+        <MetricChart annotations={annotation} data={samples} yKey="temperature" />
 
         <RecentReadingsTable readings={temperatureTable} />
       </section>
@@ -247,7 +214,7 @@ export default async function Home({
           </div>
         </div>
 
-        <MetricChart data={samples} yKey="humidity" />
+        <MetricChart annotations={annotation} data={samples} yKey="humidity" />
 
         <RecentReadingsTable readings={humidityTable} />
       </section>
@@ -260,7 +227,7 @@ export default async function Home({
           </div>
         </div>
 
-        <MetricChart data={samples} yKey="methane" />
+        <MetricChart annotations={annotation} data={samples} yKey="methane" />
 
         <RecentReadingsTable readings={methaneTable} />
       </section>

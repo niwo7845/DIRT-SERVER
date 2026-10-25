@@ -6,14 +6,16 @@ import { useRouter } from "next/navigation";
 export default function ViewCollectionSelector({
   collections,
   selected,
+  basePath = "/",
 }: {
   collections: string[];
   selected: string;
+  basePath?: string; // page the ?view= belongs to, e.g. "/annotate"
 }) {
   const router = useRouter();
 
   function handleChange(e: React.ChangeEvent<HTMLSelectElement>) {
-    router.push(`/?view=${encodeURIComponent(e.target.value)}`);
+    router.push(`${basePath}?view=${encodeURIComponent(e.target.value)}`);
   }
 
   return (

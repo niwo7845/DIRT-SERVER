@@ -7,7 +7,13 @@ export const DEFAULT_COLLECTION = "DIRT";
 // App bookkeeping collections; never offered as places to view or record data.
 export const CONFIG_COLLECTION = "config";
 export const REGISTRY_COLLECTION = "collectionRegistry";
-export const RESERVED_NAMES = [NO_RECORD, CONFIG_COLLECTION, REGISTRY_COLLECTION];
+export const ANNOTATIONS_COLLECTION = "annotations";
+export const RESERVED_NAMES = [
+  NO_RECORD,
+  CONFIG_COLLECTION,
+  REGISTRY_COLLECTION,
+  ANNOTATIONS_COLLECTION,
+];
 
 // Returns an error message, or null if the name can be used for a new data collection.
 export function validateCollectionName(name: string): string | null {

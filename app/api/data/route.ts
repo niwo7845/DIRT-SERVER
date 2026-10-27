@@ -4,6 +4,24 @@ import { getActiveCollection, NO_RECORD } from '@/lib/config';
 import { getAnnotation } from '@/lib/annotationStore';
 import { stageForTs } from '@/lib/annotations';
 
+// The value the ESP32 sends for a metric it couldn't read this cycle.
+const MISSING = -1;
+
+// Strips the metrics the device flagged as missing, so a dead or warming-up
+// sensor leaves a gap in the charts instead of a -1 spike in the data.
+// Returns null when nothing is left to store.
+function withoutMissingMetrics(body: Record<string, unknown>) {
+  const payload = body?.data as Record<string, unknown> | undefined;
+  const readings = payload?.data;
+  if (!Array.isArray(readings)) return body; // shape we don't recognise: store as sent
+
+  const kept = readings.filter((reading) => reading?.value !== MISSING);
+  if (kept.length === 0) return null;
+  if (kept.length === readings.length) return body;
+
+  return { ...body, data: { ...payload, data: kept } };
+}
+
 // Labels a reading as it arrives, so an ongoing final stage keeps labeling new data
 // without anyone having to re-apply the annotation. Never blocks the insert.
 async function classificationFor(collectionName: string, ts: unknown) {
@@ -35,12 +53,18 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Recording disabled, data discarded' }, { status: 200 });
     }
 
+    // Every sensor reported missing: nothing but a timestamp left, so don't store it.
+    const doc = withoutMissingMetrics(body);
+    if (!doc) {
+      return NextResponse.json({ message: 'All metrics missing, data discarded' }, { status: 200 });
+    }
+
     const classification = await classificationFor(collectionName, body?.data?.ts);
 
     const db = await getDb();
     const result = await db
       .collection(collectionName)
-      .insertOne(classification ? { ...body, ...classification } : body);
+      .insertOne(classification ? { ...doc, ...classification } : doc);
     return NextResponse.json({ message: 'Data received', id: result.insertedId }, { status: 201 });
   } catch (err) {
     console.error('POST /api/data error:', err);

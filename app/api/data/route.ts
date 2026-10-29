@@ -2,41 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { getActiveCollection, NO_RECORD } from '@/lib/config';
 import { getAnnotation } from '@/lib/annotationStore';
-import { stageForTs } from '@/lib/annotations';
+import type { Annotation } from '@/lib/annotations';
+import { prepareDocuments } from '@/lib/ingest';
 
-// The value the ESP32 sends for a metric it couldn't read this cycle.
-const MISSING = -1;
-
-// Strips the metrics the device flagged as missing, so a dead or warming-up
-// sensor leaves a gap in the charts instead of a -1 spike in the data.
-// Returns null when nothing is left to store.
-function withoutMissingMetrics(body: Record<string, unknown>) {
-  const payload = body?.data as Record<string, unknown> | undefined;
-  const readings = payload?.data;
-  if (!Array.isArray(readings)) return body; // shape we don't recognise: store as sent
-
-  const kept = readings.filter((reading) => reading?.value !== MISSING);
-  if (kept.length === 0) return null;
-  if (kept.length === readings.length) return body;
-
-  return { ...body, data: { ...payload, data: kept } };
-}
-
-// Labels a reading as it arrives, so an ongoing final stage keeps labeling new data
-// without anyone having to re-apply the annotation. Never blocks the insert.
-async function classificationFor(collectionName: string, ts: unknown) {
-  if (typeof ts !== 'number' || !Number.isFinite(ts)) return null;
-
+// Every sample in a batch is labeled against the same annotation, so read it once
+// instead of once per sample. Never blocks the insert.
+async function annotationFor(collectionName: string): Promise<Annotation | null> {
   try {
-    const { stages, ranges } = await getAnnotation(collectionName);
-    const match = stageForTs(ts, stages, ranges);
-    if (!match) return null;
-
-    return {
-      classification: match.stage.name,
-      classificationIndex: match.index,
-      classifiedAt: new Date(),
-    };
+    return await getAnnotation(collectionName);
   } catch (err) {
     console.error('POST /api/data classification lookup failed:', err);
     return null;
@@ -48,24 +21,31 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const collectionName = await getActiveCollection();
 
-    // Recording is off: acknowledge the reading so the ESP32 is happy, but drop it.
+    // Recording is off: acknowledge the batch so the ESP32 is happy, but drop it.
     if (collectionName === NO_RECORD) {
       return NextResponse.json({ message: 'Recording disabled, data discarded' }, { status: 200 });
     }
 
-    // Every sensor reported missing: nothing but a timestamp left, so don't store it.
-    const doc = withoutMissingMetrics(body);
-    if (!doc) {
-      return NextResponse.json({ message: 'All metrics missing, data discarded' }, { status: 200 });
+    const { docs, discarded, recognised } = prepareDocuments(body, await annotationFor(collectionName));
+    const collection = (await getDb()).collection(collectionName);
+
+    // Payload we don't recognise: store it as sent rather than drop a reading.
+    if (!recognised) {
+      await collection.insertOne(body);
+      return NextResponse.json({ message: 'Data received', inserted: 1, discarded: 0 }, { status: 201 });
     }
 
-    const classification = await classificationFor(collectionName, body?.data?.ts);
+    if (docs.length === 0) {
+      const message = discarded === 0 ? 'Empty batch' : 'All metrics missing, data discarded';
+      return NextResponse.json({ message, inserted: 0, discarded }, { status: 200 });
+    }
 
-    const db = await getDb();
-    const result = await db
-      .collection(collectionName)
-      .insertOne(classification ? { ...doc, ...classification } : doc);
-    return NextResponse.json({ message: 'Data received', id: result.insertedId }, { status: 201 });
+    // ordered: false so one rejected sample doesn't abandon the rest of the batch.
+    const result = await collection.insertMany(docs, { ordered: false });
+    return NextResponse.json(
+      { message: 'Data received', inserted: result.insertedCount, discarded },
+      { status: 201 }
+    );
   } catch (err) {
     console.error('POST /api/data error:', err);
     return NextResponse.json({ error: 'Failed to insert data' }, { status: 500 });

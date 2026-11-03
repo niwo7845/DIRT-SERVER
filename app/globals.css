@@ -931,3 +931,11 @@ rect.chart-boundary-active {
   color: #0f172a;
   font-variant-numeric: tabular-nums;
 }
+
+/* Dashboard header buttons, side by side */
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

@@ -21,6 +21,9 @@ notes.md
 # production
 /build
 
+# exported readings (scripts/jsonToCSV.py, /api/export)
+/csv
+
 # misc
 .DS_Store
 *.pem

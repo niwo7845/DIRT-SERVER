@@ -140,12 +140,24 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           </p>
         </div>
 
-        <Link
-          href={`/annotate?view=${encodeURIComponent(viewedCollection)}`}
-          className="nav-button"
-        >
-          Annotate data →
-        </Link>
+        <div className="header-actions">
+          {/* A plain anchor, not a Link: the response is a file download, so the
+              router must not try to navigate to it. */}
+          <a
+            href={`/api/export?view=${encodeURIComponent(viewedCollection)}`}
+            className="nav-button"
+            download={`${viewedCollection}.csv`}
+          >
+            Export data ↓
+          </a>
+
+          <Link
+            href={`/annotate?view=${encodeURIComponent(viewedCollection)}`}
+            className="nav-button"
+          >
+            Annotate data →
+          </Link>
+        </div>
       </header>
 
       <section className="run-card">

@@ -17,17 +17,35 @@ export interface ApplyResult {
   total: number; // readings in the collection
 }
 
+// Every incoming reading is labeled against the annotation, so reading it from
+// Atlas per POST was a round trip spent re-reading something that rarely changes.
+// Hold the last read briefly instead: writes clear it immediately, and a label
+// that is momentarily stale is self-correcting, because applying an annotation
+// rewrites the readings anyway.
+const CACHE_MS = 10_000;
+const cache = new Map<string, { readAt: number; annotation: Annotation }>();
+
+export function forgetAnnotation(collection: string): void {
+  cache.delete(collection);
+}
+
 export async function getAnnotation(collection: string): Promise<Annotation> {
+  const cached = cache.get(collection);
+  if (cached && Date.now() - cached.readAt < CACHE_MS) return cached.annotation;
+
   const db = await getDb();
   const doc = await db
     .collection<AnnotationDoc>(ANNOTATIONS_COLLECTION)
     .findOne({ _id: collection });
 
-  return {
+  const annotation: Annotation = {
     stages: doc?.stages ?? [],
     ranges: sortedRanges(doc?.ranges ?? []),
     appliedAt: doc?.appliedAt?.toISOString() ?? null,
   };
+
+  cache.set(collection, { readAt: Date.now(), annotation });
+  return annotation;
 }
 
 export async function saveAnnotation(
@@ -41,6 +59,7 @@ export async function saveAnnotation(
     { $set: { stages, ranges: sortedRanges(ranges), updatedAt: new Date() } },
     { upsert: true }
   );
+  forgetAnnotation(collection);
 }
 
 // Writes the labels onto the readings themselves, so training can query them directly:
@@ -151,6 +170,7 @@ export async function applyClassifications(
   await db
     .collection<AnnotationDoc>(ANNOTATIONS_COLLECTION)
     .updateOne({ _id: collection }, { $set: { appliedAt: classifiedAt } });
+  forgetAnnotation(collection);
 
   return {
     labeled: await readings.countDocuments({ classification: { $exists: true } }),

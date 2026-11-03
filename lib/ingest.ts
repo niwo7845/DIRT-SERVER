@@ -12,24 +12,27 @@ export const MISSING = -1;
 export type Sample = Record<string, unknown>;
 
 export interface Prepared {
-  docs: Sample[]; // one document per sample, ready to insert
+  docs: Sample[]; // every document to insert, in one go
   discarded: number; // samples dropped for having no usable metric left
-  recognised: boolean; // false: payload isn't a shape we know, store it as sent
 }
 
-// The device batches samples, so the top-level `data` is a list of them. A lone
-// object is still accepted, so firmware that posts one sample at a time keeps
-// working and the two can be swapped over without a flag day.
-export function sampleList(data: unknown): Sample[] | null {
-  if (Array.isArray(data)) return data as Sample[];
-  if (data && typeof data === "object") return [data as Sample];
+// Separates the samples from whatever the device sends alongside them (device id,
+// session id, ...). The top-level `data` is a list, but a lone object is still
+// accepted so firmware that posts one sample at a time keeps working and the two
+// can be swapped over without a flag day. Null when the shape isn't one we know.
+function split(body: unknown): { envelope: Sample; samples: Sample[] } | null {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null;
+
+  const { data, ...envelope } = body as Sample;
+  if (Array.isArray(data)) return { envelope, samples: data as Sample[] };
+  if (data && typeof data === "object") return { envelope, samples: [data as Sample] };
   return null;
 }
 
 // Strips the metrics the device flagged as missing, so a dead or warming-up sensor
 // leaves a gap in the charts instead of a -1 spike. Returns null when the sample
 // has nothing left but a timestamp.
-export function withoutMissingMetrics(sample: Sample): Sample | null {
+function withoutMissingMetrics(sample: Sample): Sample | null {
   const readings = sample?.data;
   if (!Array.isArray(readings)) return sample ?? null; // shape we don't know: store as sent
 
@@ -43,8 +46,8 @@ export function withoutMissingMetrics(sample: Sample): Sample | null {
 // Labels a sample as it arrives, so an ongoing final stage keeps labeling new data
 // without anyone having to re-apply the annotation. Each sample is labeled by its
 // own timestamp, so a batch that straddles a stage boundary is split correctly.
-export function classificationFor(annotation: Annotation, ts: unknown) {
-  if (typeof ts !== "number" || !Number.isFinite(ts)) return null;
+function classificationFor(annotation: Annotation | null, ts: unknown) {
+  if (!annotation || typeof ts !== "number" || !Number.isFinite(ts)) return null;
 
   const match = stageForTs(ts, annotation.stages, annotation.ranges);
   if (!match) return null;
@@ -58,32 +61,22 @@ export function classificationFor(annotation: Annotation, ts: unknown) {
 
 // One document per sample, so the stored shape is the same whether the device
 // batches or not, and the dashboard, the indexes and the annotation queries all
-// keep working on data.ts unchanged.
+// keep working on data.ts unchanged. The envelope is copied onto each document,
+// and can't overwrite `data` or the classification fields.
 //
-// Anything the device sends alongside the samples (device id, session id, ...)
-// describes the whole batch, so it is copied onto each sample's document.
+// A payload we don't recognise comes back as a single document holding the body
+// as sent, so nothing is dropped and the caller still has just one list to insert.
 export function prepareDocuments(body: unknown, annotation: Annotation | null): Prepared {
-  const envelope: Sample = {};
-  let data: unknown;
-
-  if (body && typeof body === "object" && !Array.isArray(body)) {
-    for (const [key, value] of Object.entries(body)) {
-      if (key === "data") data = value;
-      else envelope[key] = value;
-    }
-  }
-
-  const samples = sampleList(data);
-  if (!samples) return { docs: [], discarded: 0, recognised: false };
+  const parts = split(body);
+  if (!parts) return { docs: [body as Sample], discarded: 0 };
 
   const docs: Sample[] = [];
-  for (const sample of samples) {
+  for (const sample of parts.samples) {
     const trimmed = withoutMissingMetrics(sample);
     if (!trimmed) continue;
 
-    const classification = annotation ? classificationFor(annotation, trimmed.ts) : null;
-    docs.push({ ...envelope, data: trimmed, ...classification });
+    docs.push({ ...parts.envelope, data: trimmed, ...classificationFor(annotation, trimmed.ts) });
   }
 
-  return { docs, discarded: samples.length - docs.length, recognised: true };
+  return { docs, discarded: parts.samples.length - docs.length };
 }

@@ -2,19 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { getActiveCollection, NO_RECORD } from '@/lib/config';
 import { getAnnotation } from '@/lib/annotationStore';
-import type { Annotation } from '@/lib/annotations';
 import { prepareDocuments } from '@/lib/ingest';
-
-// Every sample in a batch is labeled against the same annotation, so read it once
-// instead of once per sample. Never blocks the insert.
-async function annotationFor(collectionName: string): Promise<Annotation | null> {
-  try {
-    return await getAnnotation(collectionName);
-  } catch (err) {
-    console.error('POST /api/data classification lookup failed:', err);
-    return null;
-  }
-}
 
 export async function POST(request: NextRequest) {
   try {
@@ -26,24 +14,25 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Recording disabled, data discarded' }, { status: 200 });
     }
 
-    const { docs, discarded, recognised } = prepareDocuments(body, await annotationFor(collectionName));
-    const collection = (await getDb()).collection(collectionName);
+    // A failed annotation read must not block the insert: the readings still land,
+    // just unlabeled, and applying the annotation relabels them.
+    const annotation = await getAnnotation(collectionName).catch((err) => {
+      console.error('POST /api/data classification lookup failed:', err);
+      return null;
+    });
 
-    // Payload we don't recognise: store it as sent rather than drop a reading.
-    if (!recognised) {
-      await collection.insertOne(body);
-      return NextResponse.json({ message: 'Data received', inserted: 1, discarded: 0 }, { status: 201 });
-    }
-
+    const { docs, discarded } = prepareDocuments(body, annotation);
     if (docs.length === 0) {
-      const message = discarded === 0 ? 'Empty batch' : 'All metrics missing, data discarded';
-      return NextResponse.json({ message, inserted: 0, discarded }, { status: 200 });
+      return NextResponse.json({ message: 'Nothing to store', inserted: 0, discarded }, { status: 200 });
     }
 
-    // ordered: false so one rejected sample doesn't abandon the rest of the batch.
-    const result = await collection.insertMany(docs, { ordered: false });
+    // The whole batch in one round trip. ordered: false so a single rejected
+    // document doesn't abandon the rest of it.
+    const db = await getDb();
+    const { insertedCount } = await db.collection(collectionName).insertMany(docs, { ordered: false });
+
     return NextResponse.json(
-      { message: 'Data received', inserted: result.insertedCount, discarded },
+      { message: 'Data received', inserted: insertedCount, discarded },
       { status: 201 }
     );
   } catch (err) {

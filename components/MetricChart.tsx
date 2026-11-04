@@ -17,20 +17,44 @@ import { Sample, getMetric, averageSamples } from "@/lib/metrics";
 import { TIME_ZONE, zoneOffset } from "@/lib/time";
 import { Range, Stage, findStage, sortedRanges } from "@/lib/annotations";
 
+const MINUTE = 60;
 const HOUR = 3600;
 const DAY = 24 * HOUR;
 
+// Shortest first. Lower case for minutes and upper for months, as everywhere
+// else in time-series tooling — and `title` spells each one out, because "10m"
+// and "1M" are otherwise a letter apart.
 const RANGES = [
-  { label: "1D", seconds: DAY },
-  { label: "1W", seconds: 7 * DAY },
-  { label: "1M", seconds: 30 * DAY },
-  { label: "ALL", seconds: null }, // null = everything
+  { label: "10m", title: "10 minutes", seconds: 10 * MINUTE },
+  { label: "1h", title: "1 hour", seconds: HOUR },
+  { label: "1D", title: "1 day", seconds: DAY },
+  { label: "1W", title: "1 week", seconds: 7 * DAY },
+  { label: "1M", title: "1 month", seconds: 30 * DAY },
+  { label: "ALL", title: "All data", seconds: null }, // null = everything
 ] as const;
 
 type RangeLabel = (typeof RANGES)[number]["label"];
 
-// Candidate spacings between time ticks, smallest first.
-const TICK_STEPS = [HOUR, 2 * HOUR, 3 * HOUR, 6 * HOUR, 12 * HOUR, DAY, 2 * DAY, 7 * DAY, 14 * DAY];
+// Candidate spacings between time ticks, smallest first. The sub-hour steps are
+// what make the short windows readable: at HOUR a 10-minute window gets one tick
+// if it happens to straddle an hour boundary, and none if it doesn't.
+const TICK_STEPS = [
+  MINUTE,
+  2 * MINUTE,
+  5 * MINUTE,
+  10 * MINUTE,
+  15 * MINUTE,
+  30 * MINUTE,
+  HOUR,
+  2 * HOUR,
+  3 * HOUR,
+  6 * HOUR,
+  12 * HOUR,
+  DAY,
+  2 * DAY,
+  7 * DAY,
+  14 * DAY,
+];
 const MAX_TICKS = 7;
 
 const TOOLTIP_CURSOR = { stroke: "#94a3b8", strokeDasharray: "3 3" };
@@ -100,8 +124,9 @@ function dayLines(start: number, end: number): number[] {
   return lines;
 }
 
-// Hour on top; the date underneath only on the first tick of each day.
-// Once ticks are a day or more apart, just the date.
+// Hour on top, or hour:minute once the ticks are closer together than an hour;
+// the date underneath only on the first tick of each day. Once ticks are a day
+// or more apart, just the date.
 function TimeTick({
   x,
   y,
@@ -123,7 +148,12 @@ function TimeTick({
   const newDay =
     prev === undefined || dateFormat.format(new Date(prev * 1000)) !== dateFormat.format(date);
 
-  const top = step >= DAY ? dateFormat.format(date) : hourFormat.format(date);
+  const top =
+    step >= DAY
+      ? dateFormat.format(date)
+      : step < HOUR
+        ? timeFormat.format(date)
+        : hourFormat.format(date);
   const bottom = step < DAY && newDay ? dateFormat.format(date) : null;
 
   return (
@@ -464,6 +494,8 @@ export default function MetricChart({
                 type="button"
                 className="chart-range-button"
                 aria-pressed={r.label === range}
+                aria-label={r.title}
+                title={r.title}
                 onClick={() => selectRange(r.label)}
               >
                 {r.label}

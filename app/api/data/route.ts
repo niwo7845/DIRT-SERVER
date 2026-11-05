@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getDb } from '@/lib/mongodb';
 import { getActiveCollection, NO_RECORD } from '@/lib/config';
 import { getAnnotation } from '@/lib/annotationStore';
+import { getOpenSession } from '@/lib/sessionStore';
 import { prepareDocuments } from '@/lib/ingest';
 
 export async function POST(request: NextRequest) {
@@ -14,14 +15,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ message: 'Recording disabled, data discarded' }, { status: 200 });
     }
 
-    // A failed annotation read must not block the insert: the readings still land,
-    // just unlabeled, and applying the annotation relabels them.
-    const annotation = await getAnnotation(collectionName).catch((err) => {
-      console.error('POST /api/data classification lookup failed:', err);
-      return null;
-    });
+    // Both depend only on the collection name, so they overlap: the session lookup
+    // costs a round trip of bandwidth, not one of latency.
+    //
+    // Neither failure may block the insert. The readings still land, just unlabeled
+    // or unattributed: applying the annotation relabels them, and a session records
+    // its own bounds, so attribution can be recovered from data.ts afterwards.
+    const [annotation, session] = await Promise.all([
+      getAnnotation(collectionName).catch((err) => {
+        console.error('POST /api/data classification lookup failed:', err);
+        return null;
+      }),
+      getOpenSession(collectionName).catch((err) => {
+        console.error('POST /api/data session lookup failed:', err);
+        return null;
+      }),
+    ]);
 
-    const { docs, discarded } = prepareDocuments(body, annotation);
+    const { docs, discarded } = prepareDocuments(body, {
+      annotation,
+      sessionId: session?._id ?? null,
+    });
     if (docs.length === 0) {
       return NextResponse.json({ message: 'Nothing to store', inserted: 0, discarded }, { status: 200 });
     }
@@ -32,7 +46,7 @@ export async function POST(request: NextRequest) {
     const { insertedCount } = await db.collection(collectionName).insertMany(docs, { ordered: false });
 
     return NextResponse.json(
-      { message: 'Data received', inserted: insertedCount, discarded },
+      { message: 'Data received', inserted: insertedCount, discarded, sessionId: session?._id ?? null },
       { status: 201 }
     );
   } catch (err) {

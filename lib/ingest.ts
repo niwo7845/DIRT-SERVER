@@ -16,6 +16,11 @@ export interface Prepared {
   discarded: number; // samples dropped for having no usable metric left
 }
 
+export interface Context {
+  annotation: Annotation | null;
+  sessionId: string | null; // the open session, or null outside one
+}
+
 // Separates the samples from whatever the device sends alongside them (device id,
 // session id, ...). The top-level `data` is a list, but a lone object is still
 // accepted so firmware that posts one sample at a time keeps working and the two
@@ -61,12 +66,16 @@ function classificationFor(annotation: Annotation | null, ts: unknown) {
 
 // One document per sample, so the stored shape is the same whether the device
 // batches or not, and the dashboard, the indexes and the annotation queries all
-// keep working on data.ts unchanged. The envelope is copied onto each document,
-// and can't overwrite `data` or the classification fields.
+// keep working on data.ts unchanged.
+//
+// Every document carries the session that was open when it arrived, or null when
+// none was, which is what separates a run of the chamber from the gap after it.
+// The server decides that, so it is written after the envelope and a sessionId the
+// device sent cannot override it — as with `data` and the classification fields.
 //
 // A payload we don't recognise comes back as a single document holding the body
 // as sent, so nothing is dropped and the caller still has just one list to insert.
-export function prepareDocuments(body: unknown, annotation: Annotation | null): Prepared {
+export function prepareDocuments(body: unknown, context: Context): Prepared {
   const parts = split(body);
   if (!parts) return { docs: [body as Sample], discarded: 0 };
 
@@ -75,7 +84,12 @@ export function prepareDocuments(body: unknown, annotation: Annotation | null): 
     const trimmed = withoutMissingMetrics(sample);
     if (!trimmed) continue;
 
-    docs.push({ ...parts.envelope, data: trimmed, ...classificationFor(annotation, trimmed.ts) });
+    docs.push({
+      ...parts.envelope,
+      data: trimmed,
+      sessionId: context.sessionId,
+      ...classificationFor(context.annotation, trimmed.ts),
+    });
   }
 
   return { docs, discarded: parts.samples.length - docs.length };

@@ -26,6 +26,13 @@ function newSessionId(): string {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 }
 
+// The session a reading arriving now belongs to, or null when none is open —
+// readings posted between a stop and the next start are deliberately unattributed.
+export async function getOpenSession(collection: string): Promise<SessionDoc | null> {
+  const db = await getDb();
+  return db.collection<SessionDoc>(SESSIONS_COLLECTION).findOne({ collection, status: "open" });
+}
+
 // Opens a session, closing whatever was already open on the collection first, so a
 // device that rebooted mid-run can't leave one open forever. The close is a no-op
 // when nothing is open, which keeps this to two writes and no read.

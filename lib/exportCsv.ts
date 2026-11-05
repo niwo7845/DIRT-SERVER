@@ -12,7 +12,7 @@
 
 import type { Collection, Document } from "mongodb";
 import { getDb } from "@/lib/mongodb";
-import { METRICS } from "@/lib/metrics";
+import { METRICS, getMetric, readingsOf } from "@/lib/metrics";
 
 // Known metrics lead the row in registry order; anything else is appended
 // alphabetically, so a new sensor shows up without this file changing.
@@ -49,21 +49,53 @@ function orderMetrics(units: Record<string, string>): string[] {
 export async function describeCollection(
   collection: Collection<Document>
 ): Promise<ExportSchema> {
+  // Readings are a metric -> value map, and older documents hold an array of
+  // { metric, value, unit }, so the metric names come out of whichever it is.
+  // $objectToArray throws on an array, so this branches on the stored type and
+  // leaves an unrecognised payload contributing no metrics at all.
   const metricRows = await collection
     .aggregate(
       [
-        { $project: { reading: "$data.data" } },
-        { $unwind: "$reading" },
-        { $group: { _id: "$reading.metric", unit: { $first: "$reading.unit" } } },
+        {
+          $project: {
+            metrics: {
+              $switch: {
+                branches: [
+                  {
+                    case: { $eq: [{ $type: "$data.data" }, "object"] },
+                    then: {
+                      $map: {
+                        input: { $objectToArray: "$data.data" },
+                        as: "entry",
+                        in: "$$entry.k",
+                      },
+                    },
+                  },
+                  {
+                    case: { $isArray: "$data.data" },
+                    then: {
+                      $map: { input: "$data.data", as: "reading", in: "$$reading.metric" },
+                    },
+                  },
+                ],
+                default: [],
+              },
+            },
+          },
+        },
+        { $unwind: "$metrics" },
+        { $group: { _id: "$metrics" } },
       ],
       { allowDiskUse: true }
     )
     .toArray();
 
+  // The unit is a property of the metric, so it is read from the registry rather
+  // than from the documents, which no longer carry one.
   const units: Record<string, string> = {};
   for (const row of metricRows) {
     if (typeof row._id === "string") {
-      units[row._id] = typeof row.unit === "string" ? row.unit : "";
+      units[row._id] = getMetric(row._id).unit;
     }
   }
 
@@ -147,15 +179,13 @@ export function rowFor(doc: Document): Record<string, string> {
     row.timestamp = cell(sample.ts);
     row.iso_time = isoTime(sample.ts);
 
-    const readings = sample.data;
-    if (Array.isArray(readings)) {
-      for (const reading of readings) {
-        if (reading && typeof reading === "object" && typeof reading.metric === "string") {
-          row[reading.metric] = cell(reading.value);
-        }
+    const readings = readingsOf(sample.data);
+    if (readings) {
+      for (const [metric, value] of Object.entries(readings)) {
+        row[metric] = cell(value);
       }
-    } else if (readings !== null && readings !== undefined) {
-      row.data_raw = cell(readings);
+    } else if (sample.data !== null && sample.data !== undefined) {
+      row.data_raw = cell(sample.data);
     }
   } else if (payload !== null && payload !== undefined) {
     row.data_raw = cell(payload);

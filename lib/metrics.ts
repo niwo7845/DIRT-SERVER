@@ -28,6 +28,34 @@ export const METRICS: Record<string, MetricInfo> = {
 export function getMetric(key: string): MetricInfo {
   return METRICS[key] ?? { label: key, unit: "", color: "#64748b" };
 }
+
+// A stored sample's readings, in either shape the database holds.
+//
+//   current: { co2: 1151, temperature: 18.94, humidity: 43.86 }
+//   older:   [{ metric: "co2", value: 1151, unit: "ppm" }, ...]
+//
+// The unit is a property of the metric, not of each reading, so it is no longer
+// stored — getMetric(metric).unit is the single source of it. Both shapes appear
+// in the database until the older documents are migrated, so everything that
+// reads a sample goes through here.
+//
+// Null means this isn't a shape we recognise, which the caller treats as a
+// payload to pass through untouched rather than a sample with no readings.
+export function readingsOf(data: unknown): Record<string, unknown> | null {
+  if (Array.isArray(data)) {
+    const readings: Record<string, unknown> = {};
+    for (const entry of data) {
+      const reading = entry as { metric?: unknown; value?: unknown };
+      if (reading && typeof reading === "object" && typeof reading.metric === "string") {
+        readings[reading.metric] = reading.value;
+      }
+    }
+    return readings;
+  }
+
+  if (data && typeof data === "object") return { ...(data as Record<string, unknown>) };
+  return null;
+}
 export function averageSamples(samples: Sample[], bucketSize: number): Sample[] {
   if (bucketSize <= 1) return samples;
 

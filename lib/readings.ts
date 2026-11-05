@@ -1,18 +1,14 @@
 import { getDb } from "@/lib/mongodb";
-import { Sample, compressSamples } from "@/lib/metrics";
+import { Sample, compressSamples, readingsOf } from "@/lib/metrics";
 
 export const MAX_DOCS = 50000; // most documents to read per page load (~5 weeks at 1/min)
 
-export interface Reading {
-  metric: string;
-  value: number;
-  unit: string;
-}
-
-// What the ESP32 sends, as stored under the document's "data" field.
+// What the ESP32 sends, as stored under the document's "data" field. `data` is a
+// metric -> value map; older documents hold an array of { metric, value, unit }
+// instead, so readingsOf() is what reads it either way.
 export interface SensorDoc {
   ts: number; // unix seconds
-  data: Reading[];
+  data: unknown;
 }
 
 interface MongoDoc {
@@ -39,8 +35,8 @@ export function toSamples(docs: SensorDoc[]): Sample[] {
   const samples = docs
     .map((doc) => {
       const sample: Sample = { ts: doc.ts };
-      for (const reading of doc.data ?? []) {
-        sample[reading.metric] = reading.value;
+      for (const [metric, value] of Object.entries(readingsOf(doc.data) ?? {})) {
+        if (typeof value === "number") sample[metric] = value;
       }
       return sample;
     })

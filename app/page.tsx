@@ -3,7 +3,7 @@ import MetricChart from "@/components/MetricChart";
 import ActiveCollectionControl from "@/components/ActiveCollectionControl";
 import ViewCollectionSelector from "@/components/ViewCollectionSelector";
 import { SensorDoc, getSensorDocs, toSamples } from "@/lib/readings";
-import { getMetric } from "@/lib/metrics";
+import { getMetric, readingsOf } from "@/lib/metrics";
 import { getAnnotation } from "@/lib/annotationStore";
 import { TIME_ZONE } from "@/lib/time";
 import { getActiveCollection, getDataCollections, resolveViewedCollection, NO_RECORD } from "@/lib/config";
@@ -32,16 +32,16 @@ function extractMetricReadings(
 ): TableRow[] {
   const rows: TableRow[] = [];
 
-  // The device's own unit strings are raw ("C", "percent"), so display the
-  // registry's instead to match the chart axes.
+  // The unit belongs to the metric, not the reading, so it comes from the
+  // registry and matches the chart axes.
   const unit = getMetric(metricName).unit;
 
   for (const doc of docs) {
-    const match = doc.data?.find((d) => d.metric === metricName);
-    if (match) {
+    const value = readingsOf(doc.data)?.[metricName];
+    if (value !== undefined) {
       rows.push({
         time: formatTime(doc.ts),
-        value: `${match.value} ${unit}`,
+        value: `${value} ${unit}`,
         sensor: sensorLabel,
       });
     }

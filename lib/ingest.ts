@@ -3,12 +3,13 @@
 // (same client-safe split as lib/recording.ts and lib/annotations.ts).
 
 import { type Annotation, stageForTs } from "@/lib/annotations";
+import { readingsOf } from "@/lib/metrics";
 
 // The value the device sends for a metric it couldn't read this cycle.
 export const MISSING = -1;
 
 // One timestamped sample as the device sends it:
-//   { ts: 1792981830, data: [{ metric: "co2", value: 1151, unit: "ppm" }, ...] }
+//   { ts: 1792981830, data: { co2: 1151, temperature: 18.94 } }
 export type Sample = Record<string, unknown>;
 
 export interface Prepared {
@@ -21,31 +22,46 @@ export interface Context {
   sessionId: string | null; // the open session, or null outside one
 }
 
-// Separates the samples from whatever the device sends alongside them (device id,
-// session id, ...). The top-level `data` is a list, but a lone object is still
-// accepted so firmware that posts one sample at a time keeps working and the two
-// can be swapped over without a flag day. Null when the shape isn't one we know.
-function split(body: unknown): { envelope: Sample; samples: Sample[] } | null {
+// Separates the samples from whatever the device sends alongside them, and takes
+// the batch's own `ts` as the fallback timestamp for samples that don't carry one.
+//
+// The device posts { ts, samples: [...] }. `data` is still accepted as the name of
+// the list, and a lone object instead of a list, so the older firmware keeps
+// working and the two can be swapped over without a flag day.
+//
+// Null when the shape isn't one we recognise.
+function split(
+  body: unknown
+): { envelope: Sample; samples: Sample[]; batchTs: unknown } | null {
   if (!body || typeof body !== "object" || Array.isArray(body)) return null;
 
-  const { data, ...envelope } = body as Sample;
-  if (Array.isArray(data)) return { envelope, samples: data as Sample[] };
-  if (data && typeof data === "object") return { envelope, samples: [data as Sample] };
+  const { samples, data, ts, ...envelope } = body as Sample;
+  const list = samples ?? data;
+
+  if (Array.isArray(list)) return { envelope, samples: list as Sample[], batchTs: ts };
+  if (list && typeof list === "object") return { envelope, samples: [list as Sample], batchTs: ts };
   return null;
 }
 
-// Strips the metrics the device flagged as missing, so a dead or warming-up sensor
-// leaves a gap in the charts instead of a -1 spike. Returns null when the sample
-// has nothing left but a timestamp.
-function withoutMissingMetrics(sample: Sample): Sample | null {
-  const readings = sample?.data;
-  if (!Array.isArray(readings)) return sample ?? null; // shape we don't know: store as sent
+// One sample, with the metrics the device flagged as missing stripped out, so a
+// dead or warming-up sensor leaves a gap in the charts instead of a -1 spike.
+// Readings are stored as a metric -> value map; the unit is derived from the
+// metric name on the way out, not stored per reading.
+//
+// Null when nothing is left but a timestamp.
+function sampleDoc(sample: Sample, batchTs: unknown): Sample | null {
+  if (!sample || typeof sample !== "object") return null;
 
-  const kept = readings.filter((reading) => reading?.value !== MISSING);
-  if (kept.length === 0) return null;
-  if (kept.length === readings.length) return sample;
+  const readings = readingsOf(sample.data);
+  if (!readings) return sample; // shape we don't know: store as sent
 
-  return { ...sample, data: kept };
+  const kept: Record<string, unknown> = {};
+  for (const [metric, value] of Object.entries(readings)) {
+    if (value !== MISSING) kept[metric] = value;
+  }
+  if (Object.keys(kept).length === 0) return null;
+
+  return { ...sample, ts: sample.ts ?? batchTs, data: kept };
 }
 
 // Labels a sample as it arrives, so an ongoing final stage keeps labeling new data
@@ -81,14 +97,14 @@ export function prepareDocuments(body: unknown, context: Context): Prepared {
 
   const docs: Sample[] = [];
   for (const sample of parts.samples) {
-    const trimmed = withoutMissingMetrics(sample);
-    if (!trimmed) continue;
+    const stored = sampleDoc(sample, parts.batchTs);
+    if (!stored) continue;
 
     docs.push({
       ...parts.envelope,
-      data: trimmed,
+      data: stored,
       sessionId: context.sessionId,
-      ...classificationFor(context.annotation, trimmed.ts),
+      ...classificationFor(context.annotation, stored.ts),
     });
   }
 

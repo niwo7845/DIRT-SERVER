@@ -8,11 +8,13 @@ export const DEFAULT_COLLECTION = "DIRT";
 export const CONFIG_COLLECTION = "config";
 export const REGISTRY_COLLECTION = "collectionRegistry";
 export const ANNOTATIONS_COLLECTION = "annotations";
+export const SESSIONS_COLLECTION = "sessions";
 export const RESERVED_NAMES = [
   NO_RECORD,
   CONFIG_COLLECTION,
   REGISTRY_COLLECTION,
   ANNOTATIONS_COLLECTION,
+  SESSIONS_COLLECTION,
 ];
 
 // Returns an error message, or null if the name can be used for a new data collection.

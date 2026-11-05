@@ -8,8 +8,9 @@ import { readingsOf } from "@/lib/metrics";
 // The value the device sends for a metric it couldn't read this cycle.
 export const MISSING = -1;
 
-// One timestamped sample as the device sends it:
-//   { ts: 1792981830, data: { co2: 1151, temperature: 18.94 } }
+// One timestamped sample as the device sends it: every key besides `ts` is a
+// metric reading, directly on the sample.
+//   { ts: 1792981830, co2: 1151, temperature: 18.94 }
 export type Sample = Record<string, unknown>;
 
 export interface Prepared {
@@ -48,11 +49,18 @@ function split(
 // Readings are stored as a metric -> value map; the unit is derived from the
 // metric name on the way out, not stored per reading.
 //
+// The metrics sit directly on the sample now, so everything besides `ts` is a
+// reading: { ts, co2, temperature, ... }. A `data` field is still accepted,
+// wrapping the readings the way older firmware (and documents from before the
+// migration, a map or the original { metric, value, unit } array) did, so
+// swapping firmware over doesn't need a flag day.
+//
 // Null when nothing is left but a timestamp.
 function sampleDoc(sample: Sample, batchTs: unknown): Sample | null {
   if (!sample || typeof sample !== "object") return null;
 
-  const readings = readingsOf(sample.data);
+  const { ts, data, ...rest } = sample;
+  const readings = data !== undefined ? readingsOf(data) : rest;
   if (!readings) return sample; // shape we don't know: store as sent
 
   const kept: Record<string, unknown> = {};
@@ -61,7 +69,7 @@ function sampleDoc(sample: Sample, batchTs: unknown): Sample | null {
   }
   if (Object.keys(kept).length === 0) return null;
 
-  return { ...sample, ts: sample.ts ?? batchTs, data: kept };
+  return { ts: ts ?? batchTs, data: kept };
 }
 
 // Labels a sample as it arrives, so an ongoing final stage keeps labeling new data

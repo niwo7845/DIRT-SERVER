@@ -4,6 +4,17 @@
 
 export const TIME_ZONE = "America/Denver";
 
+// Short "3:38 PM" for a table row, in TIME_ZONE. Moved here (from app/page.tsx)
+// so the live-updating dashboard can format a row the same way on the client
+// as the server did on first paint.
+export function formatTime(ts: number): string {
+  return new Date(ts * 1000).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: TIME_ZONE,
+  });
+}
+
 const partsFormat = new Intl.DateTimeFormat("en-US", {
   timeZone: TIME_ZONE,
   hourCycle: "h23",

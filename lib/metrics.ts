@@ -56,6 +56,27 @@ export function readingsOf(data: unknown): Record<string, unknown> | null {
   if (data && typeof data === "object") return { ...(data as Record<string, unknown>) };
   return null;
 }
+
+// The most recent readings of one metric, newest first — what the dashboard's
+// "Recent Readings" tables show. `samples` must be oldest-first, as every list
+// of them in this app is, so this walks from the end rather than sorting.
+//
+// Reads off whatever the chart is already holding client-side rather than a
+// separate query, so a live-updating dashboard can recompute a table the moment
+// new samples arrive instead of asking the server for it again.
+export function recentReadings(
+  samples: Sample[],
+  metric: string,
+  limit: number
+): { ts: number; value: number }[] {
+  const rows: { ts: number; value: number }[] = [];
+  for (let i = samples.length - 1; i >= 0 && rows.length < limit; i--) {
+    const value = samples[i][metric];
+    if (typeof value === "number") rows.push({ ts: samples[i].ts, value });
+  }
+  return rows;
+}
+
 export function averageSamples(samples: Sample[], bucketSize: number): Sample[] {
   if (bucketSize <= 1) return samples;
 

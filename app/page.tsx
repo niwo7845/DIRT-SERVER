@@ -1,108 +1,12 @@
 import Link from "next/link";
-import MetricChart from "@/components/MetricChart";
 import ActiveCollectionControl from "@/components/ActiveCollectionControl";
 import ViewCollectionSelector from "@/components/ViewCollectionSelector";
-import { SensorDoc, getSensorDocs, toSamples } from "@/lib/readings";
-import { getMetric, readingsOf } from "@/lib/metrics";
+import LiveDashboard from "@/components/LiveDashboard";
+import { getSamples } from "@/lib/readings";
 import { getAnnotation } from "@/lib/annotationStore";
-import { TIME_ZONE } from "@/lib/time";
 import { getActiveCollection, getDataCollections, resolveViewedCollection, NO_RECORD } from "@/lib/config";
 
 export const dynamic = "force-dynamic";
-
-interface TableRow {
-  time: string;
-  value: string;
-  sensor: string;
-}
-
-function formatTime(ts: number): string {
-  const date = new Date(ts * 1000);
-  return date.toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: TIME_ZONE,
-  });
-}
-
-function extractMetricReadings(
-  docs: SensorDoc[],
-  metricName: string,
-  sensorLabel: string
-): TableRow[] {
-  const rows: TableRow[] = [];
-
-  // The unit belongs to the metric, not the reading, so it comes from the
-  // registry and matches the chart axes.
-  const unit = getMetric(metricName).unit;
-
-  for (const doc of docs) {
-    const value = readingsOf(doc.data)?.[metricName];
-    if (value !== undefined) {
-      rows.push({
-        time: formatTime(doc.ts),
-        value: `${value} ${unit}`,
-        sensor: sensorLabel,
-      });
-    }
-    if (rows.length >= 5) break;
-  }
-  return rows;
-}
-
-async function getAllReadings(collectionName: string) {
-  const docs = await getSensorDocs(collectionName);
-
-  return {
-    samples: toSamples(docs),
-    co2Table: extractMetricReadings(docs, "co2", "SCD30"),
-    ethyleneTable: extractMetricReadings(docs, "ethylene", "SPEC-C2H4"),
-    temperatureTable: extractMetricReadings(docs, "temperature", "SHT31"),
-    humidityTable: extractMetricReadings(docs, "humidity", "SHT31"),
-    methaneTable: extractMetricReadings(docs, "methane", "MQ4"),
-  };
-}
-
-function RecentReadingsTable({
-  readings,
-}: {
-  readings: {
-    time: string;
-    value: string;
-    sensor: string;
-  }[];
-}) {
-  return (
-    <div className="recent-table">
-      <div className="recent-table-header">
-        <h3>Recent Readings</h3>
-        <span>Last 5 measurements</span>
-      </div>
-
-      <div className="table-container">
-        <table>
-          <thead>
-            <tr>
-              <th>Time</th>
-              <th>Value</th>
-              <th>Sensor</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {readings.map((reading, index) => (
-              <tr key={index}>
-                <td>{reading.time}</td>
-                <td className="reading-value">{reading.value}</td>
-                <td>{reading.sensor}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
 
 export default async function Home({ searchParams }: PageProps<"/">) {
   const params = await searchParams;
@@ -119,16 +23,10 @@ export default async function Home({ searchParams }: PageProps<"/">) {
     ? Array.from(new Set([...collections, activeCollection]))
     : collections;
 
-  const annotation = await getAnnotation(viewedCollection);
-
-  const {
-    samples,
-    co2Table,
-    ethyleneTable,
-    temperatureTable,
-    humidityTable,
-    methaneTable,
-  } = await getAllReadings(viewedCollection);
+  const [annotation, samples] = await Promise.all([
+    getAnnotation(viewedCollection),
+    getSamples(viewedCollection),
+  ]);
 
   return (
     <main>
@@ -179,70 +77,9 @@ export default async function Home({ searchParams }: PageProps<"/">) {
         </div>
       </section>
 
-      <section className="chart-card">
-        <div className="chart-header">
-          <div>
-            <h2>CO₂ Concentration</h2>
-            <p>Carbon dioxide concentration over time</p>
-          </div>
-        </div>
-
-        <MetricChart annotations={annotation} data={samples} yKey="co2" />
-
-        <RecentReadingsTable readings={co2Table} />
-      </section>
-
-      <section className="chart-card">
-        <div className="chart-header">
-          <div>
-            <h2>Ethylene Concentration</h2>
-            <p>Ethylene concentration over time</p>
-          </div>
-        </div>
-
-        <MetricChart annotations={annotation} data={samples} yKey="ethylene" />
-
-        <RecentReadingsTable readings={ethyleneTable} />
-      </section>
-
-      <section className="chart-card">
-        <div className="chart-header">
-          <div>
-            <h2>Temperature</h2>
-            <p>Chamber temperature over time</p>
-          </div>
-        </div>
-
-        <MetricChart annotations={annotation} data={samples} yKey="temperature" />
-
-        <RecentReadingsTable readings={temperatureTable} />
-      </section>
-
-      <section className="chart-card">
-        <div className="chart-header">
-          <div>
-            <h2>Humidity</h2>
-            <p>Relative humidity over time</p>
-          </div>
-        </div>
-
-        <MetricChart annotations={annotation} data={samples} yKey="humidity" />
-
-        <RecentReadingsTable readings={humidityTable} />
-      </section>
-
-      <section className="chart-card">
-        <div className="chart-header">
-          <div>
-            <h2>Methane Concentration</h2>
-            <p>Methane concentration over time</p>
-          </div>
-        </div>
-
-        <MetricChart annotations={annotation} data={samples} yKey="methane" />
-
-        <RecentReadingsTable readings={methaneTable} />
-      </section>
+      {/* Keyed by collection: switching the view should start fresh, not carry
+          another run's samples and polling cursor into this one. */}
+      <LiveDashboard key={viewedCollection} collection={viewedCollection} initialSamples={samples} annotation={annotation} />
     </main>
   );
 }

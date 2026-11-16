@@ -50,6 +50,13 @@ export default async function Home({ searchParams }: PageProps<"/">) {
           </a>
 
           <Link
+            href={`/dashboard?view=${encodeURIComponent(viewedCollection)}`}
+            className="nav-button"
+          >
+            Dashboard →
+          </Link>
+
+          <Link
             href={`/annotate?view=${encodeURIComponent(viewedCollection)}`}
             className="nav-button"
           >

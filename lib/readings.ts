@@ -15,11 +15,13 @@ export const MAX_LIVE_SAMPLES = 5000;
 export interface SensorDoc {
   ts: number; // unix seconds
   data: unknown;
+  sessionId?: string; // the session it was recorded in; absent outside one
 }
 
 interface MongoDoc {
   _id: unknown;
   data: SensorDoc;
+  sessionId?: string | null; // sits beside "data" on the document, not inside it
 }
 
 // Both the full load and the live poll sort on data.ts, so both want this index.
@@ -38,8 +40,15 @@ async function ensureTsIndex(db: Db, collectionName: string): Promise<void> {
     .catch((err) => console.error(`createIndex(data.ts) on ${collectionName} failed:`, err));
 }
 
+// The reading plus the session stamped on its document.
+function docOf(raw: MongoDoc): SensorDoc | null {
+  if (!raw.data) return null;
+  return raw.sessionId ? { ...raw.data, sessionId: raw.sessionId } : raw.data;
+}
+
 function sampleOf(doc: SensorDoc): Sample {
   const sample: Sample = { ts: doc.ts };
+  if (doc.sessionId) sample.sessionId = doc.sessionId;
   for (const [metric, value] of Object.entries(readingsOf(doc.data) ?? {})) {
     if (typeof value === "number") sample[metric] = value;
   }
@@ -58,7 +67,7 @@ export async function getSensorDocs(collectionName: string): Promise<SensorDoc[]
     .limit(MAX_DOCS)
     .toArray()) as unknown as MongoDoc[];
 
-  return rawDocs.map((raw) => raw.data).filter((doc): doc is SensorDoc => Boolean(doc));
+  return rawDocs.map(docOf).filter((doc): doc is SensorDoc => doc !== null);
 }
 
 // One Sample per timestamp, oldest first (what the charts want) and compressed
@@ -91,7 +100,7 @@ export async function getSamplesSince(
     .toArray()) as unknown as MongoDoc[];
 
   return rawDocs
-    .map((raw) => raw.data)
-    .filter((doc): doc is SensorDoc => Boolean(doc))
+    .map(docOf)
+    .filter((doc): doc is SensorDoc => doc !== null)
     .map(sampleOf);
 }

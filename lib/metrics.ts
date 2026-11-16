@@ -1,8 +1,12 @@
 // One flat sample = one timestamp plus any number of metric values.
 // e.g. { ts: 1790390056, co2: 900, temperature: 77, humidity: 48, methane: 100 }
+//
+// sessionId says which start/stop window the reading was taken in; it is absent
+// for readings outside any session. It is the one non-numeric field.
 export interface Sample {
   ts: number; // unix seconds
-  [metric: string]: number | undefined;
+  sessionId?: string;
+  [metric: string]: number | string | undefined;
 }
 
 export interface MetricInfo {
@@ -82,8 +86,17 @@ export function averageSamples(samples: Sample[], bucketSize: number): Sample[] 
 
   const result: Sample[] = [];
 
-  for (let i = 0; i < samples.length; i += bucketSize) {
-    const bucket = samples.slice(i, i + bucketSize);
+  // A bucket never spans two sessions, so averaging old data keeps every point
+  // attributable to the one session it came from.
+  for (let i = 0; i < samples.length; ) {
+    const sessionId = samples[i].sessionId;
+    let end = i + 1;
+    while (end < samples.length && end - i < bucketSize && samples[end].sessionId === sessionId) {
+      end++;
+    }
+    const bucket = samples.slice(i, end);
+    i = end;
+
     const totals: Record<string, { sum: number; count: number }> = {};
 
     for (const sample of bucket) {
@@ -100,6 +113,7 @@ export function averageSamples(samples: Sample[], bucketSize: number): Sample[] 
       const mean = sum / count;
       averaged[key] = key === "ts" ? Math.round(mean) : Math.round(mean * 100) / 100;
     }
+    if (sessionId) averaged.sessionId = sessionId;
     result.push(averaged);
   }
 

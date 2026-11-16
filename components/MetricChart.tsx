@@ -24,7 +24,7 @@ const DAY = 24 * HOUR;
 // Shortest first. Lower case for minutes and upper for months, as everywhere
 // else in time-series tooling — and `title` spells each one out, because "10m"
 // and "1M" are otherwise a letter apart.
-const RANGES = [
+export const RANGES = [
   { label: "10m", title: "10 minutes", seconds: 10 * MINUTE },
   { label: "1h", title: "1 hour", seconds: HOUR },
   { label: "1D", title: "1 day", seconds: DAY },
@@ -33,7 +33,7 @@ const RANGES = [
   { label: "ALL", title: "All data", seconds: null }, // null = everything
 ] as const;
 
-type RangeLabel = (typeof RANGES)[number]["label"];
+export type RangeLabel = (typeof RANGES)[number]["label"];
 
 // Candidate spacings between time ticks, smallest first. The sub-hour steps are
 // what make the short windows readable: at HOUR a 10-minute window gets one tick
@@ -77,6 +77,11 @@ interface MetricChartProps {
   connectPoints?: boolean; // draw a line between points (default: true only when X is time)
   maxPoints?: number; // visible window is averaged down to roughly this many points (default 1000)
   defaultRange?: RangeLabel; // initial time scale (default "ALL")
+  range?: RangeLabel; // controlled time scale; the chart then has no toolbar of its own
+  windowEnd?: number | null; // controlled scroll position (null = latest); used with `range`
+  height?: number | string; // plot height, px or CSS (default 320)
+  yLabel?: string; // overrides the Y metric's label, e.g. "CO₂ rate"
+  yUnit?: string; // overrides the Y metric's unit, e.g. "ppm/min"
   annotations?: { stages: Stage[]; ranges: Range[] }; // shade the stages behind the data
   separators?: number[]; // stage boundaries to draw as draggable vertical bars
   separatorColors?: string[]; // stage colour starting at each boundary
@@ -313,7 +318,7 @@ function BoundaryHandles({
   );
 }
 
-function ChevronIcon({ direction }: { direction: "left" | "right" }) {
+export function ChevronIcon({ direction }: { direction: "left" | "right" }) {
   return (
     <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden="true">
       <path
@@ -336,6 +341,11 @@ export default function MetricChart({
   connectPoints,
   maxPoints = 1000,
   defaultRange = "ALL",
+  range: controlledRange,
+  windowEnd: controlledWindowEnd,
+  height = 320,
+  yLabel,
+  yUnit,
   annotations,
   separators,
   separatorColors,
@@ -343,8 +353,10 @@ export default function MetricChart({
   onMoveSeparator,
   tentative = false,
 }: MetricChartProps) {
-  const [range, setRange] = useState<RangeLabel>(defaultRange);
-  const [windowEnd, setWindowEnd] = useState<number | null>(null); // null = pinned to the latest data
+  const [ownRange, setRange] = useState<RangeLabel>(defaultRange);
+  const range = controlledRange ?? ownRange;
+  const [ownWindowEnd, setWindowEnd] = useState<number | null>(null); // null = pinned to the latest data
+  const windowEnd = controlledWindowEnd !== undefined ? controlledWindowEnd : ownWindowEnd;
 
   const isTime = xKey === "ts";
   const connect = connectPoints ?? isTime;
@@ -354,7 +366,8 @@ export default function MetricChart({
   const lineColor = color ?? yInfo.color;
 
   const xTitle = xInfo.unit ? `${xInfo.label} (${xInfo.unit})` : xInfo.label;
-  const yTitle = yInfo.unit ? `${yInfo.label} (${yInfo.unit})` : yInfo.label;
+  const yUnitText = yUnit ?? yInfo.unit;
+  const yTitle = yUnitText ? `${yLabel ?? yInfo.label} (${yUnitText})` : (yLabel ?? yInfo.label);
 
   // Oldest-first, only samples that actually have both values for this chart
   const sorted = useMemo(
@@ -469,6 +482,7 @@ export default function MetricChart({
 
   return (
     <div className="metric-chart">
+      {controlledRange === undefined && (
       <div className="chart-toolbar">
         <span className="chart-window">
           {sorted.length ? `${formatTs(start)} – ${formatTs(end)}` : "No data yet"}
@@ -516,11 +530,12 @@ export default function MetricChart({
           )}
         </div>
       </div>
+      )}
 
       <ScatterChart
         responsive
         className="chart-plot"
-        style={{ width: "100%", height: 320 }}
+        style={{ width: "100%", height }}
         margin={{ top: 10, right: 16, left: 4, bottom: isTime ? 4 : 24 }}
       >
         <CartesianGrid stroke="#e2e8f0" strokeDasharray="3 3" vertical={false} />
@@ -578,9 +593,9 @@ export default function MetricChart({
           type="number"
           dataKey={yKey}
           name={yTitle}
-          unit={yInfo.unit ? ` ${yInfo.unit}` : undefined}
+          unit={yUnitText ? ` ${yUnitText}` : undefined}
           domain={["auto", "auto"]}
-          width={80}
+          width={yUnit ? 112 : 80} // a rate unit like "ppm/min" is wider than "ppm"
           axisLine={false}
           tickLine={false}
           tick={{ fill: "#64748b", fontSize: 12 }}

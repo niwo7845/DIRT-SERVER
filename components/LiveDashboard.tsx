@@ -1,15 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import MetricChart from "@/components/MetricChart";
-import { Sample, compressSamples, getMetric, recentReadings } from "@/lib/metrics";
+import { Sample, getMetric, recentReadings } from "@/lib/metrics";
+import { useLiveSamples } from "@/lib/useLiveSamples";
 import { formatTime } from "@/lib/time";
 import { Range, Stage } from "@/lib/annotations";
 
-// How often to ask the server for anything newer than what's already on screen.
-// Cheap enough at the handful of viewers this dashboard has that there's no
-// reason to make it configurable.
-const POLL_MS = 5000;
 const RECENT_LIMIT = 5;
 
 // One section per metric. Order here is render order; everything a section needs
@@ -63,9 +60,8 @@ function RecentReadingsTable({ readings }: { readings: TableRow[] }) {
 }
 
 // The charts and the recent-readings tables, kept current without a reload.
-// Render once from the server-fetched samples, same as before; after that, poll
-// for whatever's new and merge it in. Switching the viewed collection remounts
-// this (the parent keys it by collection), so there's nothing to reset here.
+// Render once from the server-fetched samples, same as before; after that,
+// useLiveSamples keeps them current.
 export default function LiveDashboard({
   collection,
   initialSamples,
@@ -75,43 +71,7 @@ export default function LiveDashboard({
   initialSamples: Sample[];
   annotation: { stages: Stage[]; ranges: Range[] };
 }) {
-  const [samples, setSamples] = useState<Sample[]>(initialSamples);
-
-  // The cursor for the next poll. A ref, not state: it needs to be current
-  // inside the interval's closure without retriggering the effect on every tick.
-  const lastTsRef = useRef<number>(
-    initialSamples.length ? initialSamples[initialSamples.length - 1].ts : 0
-  );
-
-  useEffect(() => {
-    let cancelled = false;
-
-    async function tick() {
-      if (document.hidden) return; // a backgrounded tab can wait for the next one
-
-      try {
-        const res = await fetch(
-          `/api/data/live?view=${encodeURIComponent(collection)}&after=${lastTsRef.current}`,
-          { cache: "no-store" }
-        );
-        if (!res.ok || cancelled) return;
-
-        const { samples: fresh, latestTs } = await res.json();
-        if (cancelled || !Array.isArray(fresh) || fresh.length === 0) return;
-
-        setSamples((prev) => compressSamples([...prev, ...fresh]));
-        if (typeof latestTs === "number") lastTsRef.current = latestTs;
-      } catch {
-        // dropped poll: the next tick picks up from the same cursor
-      }
-    }
-
-    const id = setInterval(tick, POLL_MS);
-    return () => {
-      cancelled = true;
-      clearInterval(id);
-    };
-  }, [collection]);
+  const samples = useLiveSamples(collection, initialSamples);
 
   // Recomputed from whatever samples currently holds, so a poll that adds new
   // points updates these the same way it updates the charts.

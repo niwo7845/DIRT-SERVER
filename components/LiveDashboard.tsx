@@ -17,7 +17,7 @@ const CHARTS = [
   { key: "ethylene", title: "Ethylene Concentration", subtitle: "Ethylene concentration over time", sensor: "SPEC-C2H4" },
   { key: "temperature", title: "Temperature", subtitle: "Chamber temperature over time", sensor: "SHT31" },
   { key: "humidity", title: "Humidity", subtitle: "Relative humidity over time", sensor: "SHT31" },
-  { key: "methane", title: "Methane Concentration", subtitle: "Methane concentration over time", sensor: "MQ4" },
+  { key: "methane", title: "Ethanol/Methane Concentration", subtitle: "Ethanol/methane concentration over time", sensor: "MQ4" },
 ] as const;
 
 interface TableRow {

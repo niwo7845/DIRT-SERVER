@@ -22,7 +22,10 @@ export const KEEP_RECENT_FULL_RES = 2000; // newest samples are never averaged
 export const METRICS: Record<string, MetricInfo> = {
   co2: { label: "CO₂", unit: "ppm", color: "#22c55e" },
   ethylene: { label: "Ethylene", unit: "ppm", color: "#f59e0b" },
-  methane: { label: "Methane", unit: "ppm", color: "#ef4444" },
+  // The MQ4 is cross-sensitive to ethanol, so a reading can't be attributed to
+  // methane alone. Only the label says so; the key is what the ESP32 sends and
+  // what the database stores.
+  methane: { label: "Ethanol/Methane", unit: "ppm", color: "#ef4444" },
   temperature: { label: "Temperature", unit: "°C", color: "#3b82f6" }, // the ESP32 sends Celsius
   humidity: { label: "Humidity", unit: "%", color: "#8b5cf6" },
 };

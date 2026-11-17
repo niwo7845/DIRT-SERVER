@@ -18,6 +18,9 @@ import { METRICS, getMetric, readingsOf } from "@/lib/metrics";
 // alphabetically, so a new sensor shows up without this file changing.
 const METRIC_ORDER = Object.keys(METRICS);
 
+// The annotation columns. Always in the file, empty for readings nobody has
+// labelled, so the columns don't appear and disappear depending on whether a run
+// happens to have been annotated yet — a training script can rely on them.
 const LABEL_COLUMNS = ["classification", "classificationIndex", "classifiedAt"];
 
 // Columns built by hand below; every other top-level field is an "extra".
@@ -122,7 +125,7 @@ export async function describeCollection(
   return {
     metrics: orderMetrics(units),
     units,
-    labels: LABEL_COLUMNS.filter((name) => top.has(name)),
+    labels: LABEL_COLUMNS,
     extras: [...top].filter((key) => !HANDLED.has(key)).sort(),
     unparsed,
   };

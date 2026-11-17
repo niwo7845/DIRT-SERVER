@@ -59,6 +59,9 @@ UNITS = {
     "humidity": "%",
 }
 
+# The annotation columns. Always in the file, empty for readings nobody has
+# labelled, so the columns don't appear and disappear depending on whether a run
+# happens to have been annotated yet. Mirrors LABEL_COLUMNS in lib/exportCsv.ts.
 LABEL_COLUMNS = ["classification", "classificationIndex", "classifiedAt"]
 
 
@@ -239,7 +242,8 @@ def describe(collection):
     return {
         "metrics": known + extra,
         "units": units,
-        "labels": [name for name in LABEL_COLUMNS if name in top],
+        "labels": list(LABEL_COLUMNS),
+        "labeled": any(name in top for name in LABEL_COLUMNS),
         "extras": sorted(top - HANDLED),
         "unparsed": unparsed,
     }
@@ -267,7 +271,8 @@ def merge(schemas):
     return {
         "metrics": known + extra,
         "units": units,
-        "labels": [name for name in LABEL_COLUMNS if any(name in s["labels"] for s in schemas)],
+        "labels": list(LABEL_COLUMNS),
+        "labeled": any(s["labeled"] for s in schemas),
         "extras": sorted({name for schema in schemas for name in schema["extras"]}),
         "unparsed": any(schema["unparsed"] for schema in schemas),
     }
@@ -415,7 +420,7 @@ def main():
                 for metric in schema["metrics"]
             ) or "no metrics"
             notes = []
-            if schema["labels"]:
+            if schema["labeled"]:
                 notes.append("labeled")
             if undated:
                 notes.append(f"{undated} without a timestamp")
